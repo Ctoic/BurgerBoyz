@@ -14,7 +14,7 @@ const highlights = [
   {
     icon: Truck,
     title: "Fast Delivery",
-    description: "Hot and fresh at your doorstep within 30 minutes or your next order is on us",
+    description: "Hot and fresh at your doorstep within 30-45 minutes or your next order is on us",
   },
   {
     icon: Award,

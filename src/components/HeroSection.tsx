@@ -30,9 +30,9 @@ const HeroSection = () => {
           </div>
 
           <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl text-brand-black leading-none mb-6 animate-slide-up">
-            REAL BEEF.
+            JUICY BEEF.
             <br />
-            <span className="text-white drop-shadow-lg">JUICY CHICKEN.</span>
+            <span className="text-white drop-shadow-lg">FRESH FRIED CHICKEN.</span>
             <br />
             <span className="text-accent">BURGER BOYS.</span>
           </h1>
@@ -62,12 +62,12 @@ const HeroSection = () => {
               <p className="text-sm text-brand-black/70 font-medium">Fresh Ingredients</p>
             </div>
             <div className="text-center">
-              <p className="font-display text-3xl md:text-4xl text-white drop-shadow">30min</p>
+              <p className="font-display text-3xl md:text-4xl text-white drop-shadow">30-45 minutes</p>
               <p className="text-sm text-brand-black/70 font-medium">Fast Delivery</p>
             </div>
             <div className="text-center">
-              <p className="font-display text-3xl md:text-4xl text-accent">5000+</p>
-              <p className="text-sm text-brand-black/70 font-medium">Happy Customers</p>
+              <p className="font-display text-3xl md:text-4xl text-accent">35,000+</p>
+              <p className="text-sm text-brand-black/70 font-medium">Happy Meals Served</p>
             </div>
           </div>
         </div>

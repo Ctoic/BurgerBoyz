@@ -48,10 +48,10 @@ const Header = () => {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-4">
-            <a href="tel:+923001234567" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+            <div className="flex items-center gap-2 text-foreground">
               <Phone className="w-4 h-4" />
-              <span className="font-semibold">0300-1234567</span>
-            </a>
+              <span className="font-semibold">Phone pending</span>
+            </div>
             <Link to="/cart" className="relative">
               <Button variant="outline" className="rounded-full px-4">
                 <ShoppingCart className="w-4 h-4" />

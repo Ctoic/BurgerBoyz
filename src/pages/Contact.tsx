@@ -55,7 +55,7 @@ const Contact = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Our Location</h3>
-                    <p className="text-muted-foreground">Manchester, UK</p>
+                    <p className="text-muted-foreground">100-102 Market St, Droylsden, Manchester M43 6DE</p>
                   </div>
                 </div>
 
@@ -65,9 +65,7 @@ const Contact = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Phone</h3>
-                    <a href="tel:+923001234567" className="text-muted-foreground hover:text-primary transition-colors">
-                      0300-1234567
-                    </a>
+                    <p className="text-muted-foreground">Phone number pending</p>
                   </div>
                 </div>
 
@@ -77,9 +75,7 @@ const Contact = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Email</h3>
-                    <a href="mailto:hello@dewaasuwale.com" className="text-muted-foreground hover:text-primary transition-colors">
-                      hello@dewaasuwale.com
-                    </a>
+                    <p className="text-muted-foreground">Email pending</p>
                   </div>
                 </div>
 
@@ -89,25 +85,19 @@ const Contact = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Hours</h3>
-                    <p className="text-muted-foreground">Mon - Thu: 11 AM - 11 PM</p>
-                    <p className="text-muted-foreground">Fri - Sun: 11 AM - 12 AM</p>
+                    <p className="text-muted-foreground">Mon - Sun: 11 AM - 10 PM</p>
                   </div>
                 </div>
               </div>
 
               {/* WhatsApp CTA */}
-              <a
-                href="https://wa.me/923001234567"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 p-6 bg-[#25D366] text-primary-foreground rounded-2xl hover:bg-[#20BD5A] transition-colors"
-              >
+              <div className="flex items-center gap-3 p-6 bg-[#25D366] text-primary-foreground rounded-2xl">
                 <MessageCircle className="w-8 h-8" />
                 <div>
-                  <p className="font-semibold">Order via WhatsApp</p>
-                  <p className="text-sm opacity-80">Quick responses guaranteed!</p>
+                  <p className="font-semibold">WhatsApp details pending</p>
+                  <p className="text-sm opacity-80">We'll share contact details soon.</p>
                 </div>
-              </a>
+              </div>
             </div>
 
             {/* Contact Form */}
@@ -185,7 +175,7 @@ const Contact = () => {
       {/* Map */}
       <section className="h-96 bg-muted">
         <iframe
-          src="https://www.google.com/maps?q=Manchester%2C%20UK&output=embed"
+          src="https://www.google.com/maps?q=100-102%20Market%20St%2C%20Droylsden%2C%20Manchester%20M43%206DE&output=embed"
           width="100%"
           height="100%"
           style={{ border: 0 }}

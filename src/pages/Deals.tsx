@@ -1,6 +1,6 @@
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
-import { Clock, Tag, Flame } from "lucide-react";
+import { Tag } from "lucide-react";
 import beefBurger from "@/assets/beef-burger.jpg";
 import chickenBurger from "@/assets/chicken-burger.jpg";
 import chickenWrap from "@/assets/chicken-wrap.jpg";
@@ -60,30 +60,12 @@ const deals = [
 const Deals = () => {
   return (
     <Layout>
-      {/* Hero */}
-      <section className="pt-24 pb-12 bg-gradient-to-b from-primary via-primary to-secondary">
-        <div className="container-custom section-padding pt-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Flame className="w-8 h-8 text-brand-black animate-pulse" />
-            <span className="text-brand-black font-bold uppercase tracking-wide">Hot Deals</span>
-            <Flame className="w-8 h-8 text-brand-black animate-pulse" />
-          </div>
-          <h1 className="font-display text-5xl md:text-6xl text-brand-black text-center mb-4">
-            DEALS & COMBOS
-          </h1>
-          <p className="text-brand-black/70 text-center max-w-2xl mx-auto font-medium">
-            Save big with our specially crafted meal deals. More food, more flavor, less spending!
+      <section className="border-b border-border bg-background">
+        <div className="container-custom section-padding pt-24 pb-6 md:pt-28">
+          <h1 className="font-display text-3xl text-foreground md:text-5xl">Deals & Combos</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
+            Save more with curated bundles and limited-time offers.
           </p>
-        </div>
-      </section>
-
-      {/* Limited Time Banner */}
-      <section className="bg-brand-black py-4">
-        <div className="container-custom section-padding">
-          <div className="flex items-center justify-center gap-4 text-white">
-            <Clock className="w-5 h-5 text-primary" />
-            <span className="font-medium">Limited Time Offers — Order Now Before They're Gone!</span>
-          </div>
         </div>
       </section>
 

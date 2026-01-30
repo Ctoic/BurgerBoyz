@@ -20,18 +20,20 @@ const CTASection = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="tel:+923001234567">
-              <Button className="bg-brand-black text-white hover:bg-brand-black/90 text-lg px-8 py-6 rounded-full flex items-center gap-3 shadow-xl">
-                <Phone className="w-5 h-5" />
-                Call to Order
-              </Button>
-            </a>
-            <a href="https://wa.me/923001234567" target="_blank" rel="noopener noreferrer">
-              <Button className="bg-[#25D366] hover:bg-[#20BD5A] text-white text-lg px-8 py-6 rounded-full flex items-center gap-3 shadow-xl">
-                <MessageCircle className="w-5 h-5" />
-                WhatsApp Order
-              </Button>
-            </a>
+            <Button
+              disabled
+              className="bg-brand-black text-white text-lg px-8 py-6 rounded-full flex items-center gap-3 shadow-xl"
+            >
+              <Phone className="w-5 h-5" />
+              Call to Order (Pending)
+            </Button>
+            <Button
+              disabled
+              className="bg-[#25D366] text-white text-lg px-8 py-6 rounded-full flex items-center gap-3 shadow-xl"
+            >
+              <MessageCircle className="w-5 h-5" />
+              WhatsApp Order (Pending)
+            </Button>
           </div>
 
           <div className="mt-10">

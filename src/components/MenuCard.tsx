@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import type { MouseEvent } from "react";
 
 interface MenuCardProps {
   name: string;
@@ -8,9 +9,23 @@ interface MenuCardProps {
   image: string;
   isPopular?: boolean;
   onClick?: () => void;
+  onAddToCart?: () => void;
 }
 
-const MenuCard = ({ name, description, price, image, isPopular, onClick }: MenuCardProps) => {
+const MenuCard = ({
+  name,
+  description,
+  price,
+  image,
+  isPopular,
+  onClick,
+  onAddToCart,
+}: MenuCardProps) => {
+  const handleAddToCartClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onAddToCart?.();
+  };
+
   return (
     <div
       className="card-food group relative rounded-2xl sm:rounded-3xl cursor-pointer"
@@ -42,7 +57,7 @@ const MenuCard = ({ name, description, price, image, isPopular, onClick }: MenuC
         <Button
           size="icon"
           className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-white text-foreground shadow-md hover:bg-white sm:hidden"
-          onClick={(event) => event.stopPropagation()}
+          onClick={handleAddToCartClick}
         >
           <Plus className="w-5 h-5" />
         </Button>
@@ -57,7 +72,7 @@ const MenuCard = ({ name, description, price, image, isPopular, onClick }: MenuC
           <span className="font-display text-lg sm:text-2xl text-primary">£{price.toFixed(2)}</span>
           <Button
             className="hidden sm:flex bg-primary hover:bg-[hsl(var(--brand-yellow-dark))] text-primary-foreground rounded-full px-4 py-2 items-center gap-2 transition-all hover:scale-105"
-            onClick={(event) => event.stopPropagation()}
+            onClick={handleAddToCartClick}
           >
             <Plus className="w-4 h-4" />
             Add to cart

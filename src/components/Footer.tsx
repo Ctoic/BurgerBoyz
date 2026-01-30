@@ -13,21 +13,17 @@ const Footer = () => {
               <span className="font-display text-2xl text-primary">BOYS</span>
             </Link>
             <p className="text-sm leading-relaxed mb-6 text-white/70">
-              Real Beef. Juicy Chicken. Burger Boys. Experience the bold flavors of street-style fast food done right.
+              Juicy Beef. Fresh Fried Chicken. Burger Boys. Experience the bold flavors of street-style fast food done right.
             </p>
             <div className="flex gap-4">
               <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="#"
                 className="w-10 h-10 rounded-full bg-primary flex items-center justify-center hover:bg-secondary transition-colors text-brand-black"
               >
                 <Instagram className="w-5 h-5" />
               </a>
               <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="#"
                 className="w-10 h-10 rounded-full bg-primary flex items-center justify-center hover:bg-secondary transition-colors text-brand-black"
               >
                 <Facebook className="w-5 h-5" />
@@ -52,15 +48,15 @@ const Footer = () => {
             <ul className="space-y-4">
               <li className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-primary mt-0.5" />
-                <span>Manchester, UK</span>
+                <span>100-102 Market St, Droylsden, Manchester M43 6DE</span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-primary" />
-                <a href="tel:+923001234567" className="hover:text-primary transition-colors">0300-1234567</a>
+                <span>Phone number pending</span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-primary" />
-                <a href="mailto:hello@dewaasuwale.com" className="hover:text-primary transition-colors">hello@dewaasuwale.com</a>
+                <span>droylsdenburgerboys@gmail.com</span>
               </li>
             </ul>
           </div>
@@ -72,15 +68,8 @@ const Footer = () => {
               <li className="flex items-center gap-3">
                 <Clock className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="font-medium">Mon - Thu</p>
-                  <p className="text-sm text-white/60">11:00 AM - 11:00 PM</p>
-                </div>
-              </li>
-              <li className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-secondary" />
-                <div>
-                  <p className="font-medium">Fri - Sun</p>
-                  <p className="text-sm text-white/60">11:00 AM - 12:00 AM</p>
+                  <p className="font-medium">Mon - Sun</p>
+                  <p className="text-sm text-white/60">11 AM - 10 PM</p>
                 </div>
               </li>
             </ul>
@@ -88,7 +77,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-white/10 mt-12 pt-8 text-center text-sm text-white/60">
-          <p>© {new Date().getFullYear()} Burger Boys. All rights reserved.</p>
+          <p>Burger Boys. Connect with us on socials to get more information.</p>
         </div>
       </div>
     </footer>

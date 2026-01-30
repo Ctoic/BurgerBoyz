@@ -1,30 +1,45 @@
 import Layout from "@/components/Layout";
+import OrderFlowVisualizer from "@/components/OrderFlowVisualizer";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Cart = () => {
-  const { items, subtotal, updateQuantity, removeItem } = useCart();
+  const { items, subtotal, order, resetOrder, updateQuantity, removeItem } = useCart();
+  const isDelivered = order?.stage === "delivered";
 
   return (
     <Layout>
-      <section className="pt-24 pb-12 bg-gradient-to-b from-primary via-primary to-secondary">
-        <div className="container-custom section-padding pt-6 md:pt-12">
-          <h1 className="font-display text-3xl md:text-6xl text-brand-black text-center mb-3 md:mb-4">
-            YOUR <span className="text-white drop-shadow-lg">CART</span>
-          </h1>
-          <p className="text-brand-black/70 text-center max-w-2xl mx-auto font-medium text-sm md:text-base">
-            Review your items and proceed to checkout.
+      <section className="border-b border-border bg-background">
+        <div className="container-custom section-padding pt-24 pb-6 md:pt-28">
+          <h1 className="font-display text-3xl text-foreground md:text-5xl">Your Cart</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
+            Review your items and head to checkout when you’re ready.
           </p>
         </div>
       </section>
 
       <section className="py-10 bg-background">
         <div className="container-custom section-padding">
+          <div className="mb-8">
+            <OrderFlowVisualizer currentStep="cart" />
+          </div>
+
           {items.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-lg text-muted-foreground mb-6">Your cart is empty.</p>
+              <p className="text-lg text-muted-foreground mb-6">
+                {order && !isDelivered
+                  ? "Your order is in progress. You can still start another order."
+                  : "Your cart is empty."}
+              </p>
+              {order && isDelivered && (
+                <div className="mb-6">
+                  <Button variant="outline" onClick={resetOrder}>
+                    Clear Delivered Order Timeline
+                  </Button>
+                </div>
+              )}
               <Link to="/menu">
                 <Button className="btn-order">Browse Menu</Button>
               </Link>

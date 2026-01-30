@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Share2, X } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import beefBurger from "@/assets/beef-burger.jpg";
 import chickenBurger from "@/assets/chicken-burger.jpg";
@@ -304,6 +305,7 @@ const Menu = () => {
   const maxAddOns = 4;
   const maxRemovals = 5;
   const { addItem } = useCart();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   const addOnsTotal = useMemo(() => {
@@ -361,16 +363,28 @@ const Menu = () => {
     navigate("/cart");
   };
 
+  const handleQuickAddToCart = (item: MenuItem) => {
+    addItem({
+      name: item.name,
+      description: item.description,
+      image: item.image,
+      basePrice: item.price,
+      addOns: [],
+      removals: [],
+    });
+    toast({
+      title: "Added to cart",
+      description: `${item.name} is ready for checkout.`,
+    });
+  };
+
   return (
     <Layout>
-      {/* Hero */}
-      <section className="pt-20 pb-6 md:pt-24 md:pb-12 bg-gradient-to-b from-primary via-primary to-secondary">
-        <div className="container-custom section-padding pt-6 md:pt-12">
-          <h1 className="font-display text-3xl md:text-6xl text-brand-black text-center mb-3 md:mb-4">
-            OUR <span className="text-white drop-shadow-lg">MENU</span>
-          </h1>
-          <p className="text-brand-black/70 text-center max-w-2xl mx-auto font-medium text-sm md:text-base">
-            Crafted with passion, served with pride. Every bite tells a story of bold flavors.
+      <section className="border-b border-border bg-background">
+        <div className="container-custom section-padding pt-24 pb-6 md:pt-28">
+          <h1 className="font-display text-3xl text-foreground md:text-5xl">Our Menu</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
+            Pick your favorites and customize them to your taste.
           </p>
         </div>
       </section>
@@ -411,6 +425,7 @@ const Menu = () => {
                 image={item.image}
                 isPopular={item.isPopular}
                 onClick={() => handleOpenItem(item)}
+                onAddToCart={() => handleQuickAddToCart(item)}
               />
             ))}
           </div>
