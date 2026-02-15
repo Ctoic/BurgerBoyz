@@ -28,7 +28,7 @@ This guide is tailored for this repo:
 2. Set **Root Directory** to `backend` (monorepo requirement).
 3. In service settings, set:
    - Build Command: `npm ci && npm run prisma:generate && npm run build`
-   - Start Command: `node dist/main.js`
+   - Start Command: `npm run start:prod`
 4. Set Healthcheck Path to `/api/health`.
 5. Confirm Railway **Root Directory** is `backend`.
 6. Optionally set Watch Paths to `backend/**` so frontend-only commits do not trigger backend deploys.
@@ -162,6 +162,23 @@ Then redeploy frontend.
 - Ensure app binds to `PORT` (already implemented in `backend/src/main.ts`).
 - Verify health check path is `/api/health`.
 
+### 5) `bun install --frozen-lockfile` error on Railway
+- Cause: Railway is building the repo root (frontend) and auto-detecting `bun.lockb`.
+- Fix:
+  1. Open Railway service settings.
+  2. Set **Root Directory** to `backend`.
+  3. Set build/start explicitly:
+     - Build: `npm ci && npm run prisma:generate && npm run build`
+     - Start: `npm run start:prod`
+  4. Redeploy.
+
+### 6) `Cannot find module '/app/dist/main.js'`
+- Cause: Nest build in this project outputs `dist/src/main.js`.
+- Fix:
+  1. Set start command to `npm run start:prod`.
+  2. Or explicitly use `node dist/src/main.js`.
+  3. Redeploy.
+
 ## 11. Official References
 
 - Railway healthchecks: https://docs.railway.com/reference/healthchecks
@@ -184,4 +201,4 @@ From `backend/package.json`:
 Recommended Railway build/start:
 
 - Build: `npm ci && npm run prisma:generate && npm run build`
-- Start: `node dist/main.js`
+- Start: `npm run start:prod`
