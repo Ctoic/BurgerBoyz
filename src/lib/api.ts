@@ -21,10 +21,17 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const shouldSendJsonContentType =
+    method !== "GET" &&
+    method !== "HEAD" &&
+    options.body !== undefined &&
+    options.body !== null;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(shouldSendJsonContentType ? { "Content-Type": "application/json" } : {}),
       ...(options.headers ?? {}),
     },
     credentials: "include",

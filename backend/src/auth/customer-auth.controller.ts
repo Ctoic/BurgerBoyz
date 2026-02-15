@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { CustomerAuthService } from "./customer-auth.service";
 import { buildAuthCookieOptions } from "./cookie-options";
 import { CustomerJwtAuthGuard } from "./guards/customer-jwt.guard";
+import { OptionalCustomerJwtGuard } from "./guards/optional-customer.guard";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
 import { OrdersService } from "../orders/orders.service";
 import { CustomerLoginDto } from "./dto/customer-login.dto";
@@ -37,7 +38,7 @@ export class CustomerAuthController {
   }
 
   @Get("me")
-  @UseGuards(CustomerJwtAuthGuard)
+  @UseGuards(OptionalCustomerJwtGuard)
   async me(@Req() req: Request) {
     const user = req.user as { id: string } | undefined;
     if (!user) return { user: null };

@@ -86,6 +86,8 @@ const AdminOrders = () => {
         `/admin/orders?${params.toString()}`,
       );
     },
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
   const orders = data?.items ?? [];
 

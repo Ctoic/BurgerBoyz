@@ -38,7 +38,10 @@ const AdminSupport = () => {
         `/admin/support/threads?${params.toString()}`,
       );
     },
-    refetchInterval: 5000,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: false,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
   const threads = threadsQuery.data?.items ?? [];
 
@@ -46,7 +49,10 @@ const AdminSupport = () => {
     queryKey: ["admin-support-thread", activeThreadId],
     queryFn: () => apiFetch<{ messages: SupportMessage[]; user: SupportThreadSummary["user"] }>(`/admin/support/threads/${activeThreadId}`),
     enabled: Boolean(activeThreadId),
-    refetchInterval: activeThreadId ? 5000 : false,
+    refetchInterval: activeThreadId ? 10000 : false,
+    refetchIntervalInBackground: false,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 
   const markReadMutation = useMutation({

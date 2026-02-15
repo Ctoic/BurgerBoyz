@@ -41,6 +41,7 @@ const AdminLayout = () => {
     queryKey: ["admin-me"],
     queryFn: () => apiFetch<{ user: ApiAdminUser }>("/admin/me"),
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const supportThreadsQuery = useQuery({
@@ -50,7 +51,10 @@ const AdminLayout = () => {
         "/admin/support/threads?page=1&pageSize=10",
       ),
     enabled: Boolean(data?.user),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
   const notificationsQuery = useQuery({
     queryKey: ["admin-notifications"],
@@ -59,14 +63,20 @@ const AdminLayout = () => {
         "/admin/notifications?page=1&pageSize=10",
       ),
     enabled: Boolean(data?.user),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
   const ordersQuery = useQuery({
     queryKey: ["admin-orders-nav"],
     queryFn: () =>
       apiFetch<ApiPaginatedResponse<ApiOrder>>("/admin/orders?page=1&pageSize=1"),
     enabled: Boolean(data?.user),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 
   const logoutMutation = useMutation({
