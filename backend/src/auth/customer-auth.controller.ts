@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Put, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { Request, Response } from "express";
 import { CustomerAuthService } from "./customer-auth.service";
+import { buildAuthCookieOptions } from "./cookie-options";
 import { CustomerJwtAuthGuard } from "./guards/customer-jwt.guard";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
 import { OrdersService } from "../orders/orders.service";
@@ -62,17 +63,10 @@ export class CustomerAuthController {
   }
 
   private setAuthCookie(res: Response, token: string) {
-    const isSecure = process.env.COOKIE_SECURE === "true";
-    const domain = process.env.COOKIE_DOMAIN && process.env.COOKIE_DOMAIN !== "localhost"
-      ? process.env.COOKIE_DOMAIN
-      : undefined;
-
-    res.cookie("customer_token", token, {
-      httpOnly: true,
-      secure: isSecure,
-      sameSite: "lax",
-      domain,
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-    });
+    res.cookie(
+      "customer_token",
+      token,
+      buildAuthCookieOptions(1000 * 60 * 60 * 24 * 30),
+    );
   }
 }

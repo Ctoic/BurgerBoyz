@@ -54,7 +54,10 @@ Example:
 `https://your-site.netlify.app,https://your-custom-domain.com`
 
 - `COOKIE_SECURE`  
-`true` 
+`true`
+
+- `COOKIE_SAME_SITE`  
+`none` for Netlify (different domain) + Railway API cookie auth.
 
 ### Strongly recommended
 
@@ -144,6 +147,7 @@ Then redeploy frontend.
 - Confirm `FRONTEND_ORIGIN` exactly matches Netlify origin.
 - Confirm frontend fetch uses `credentials: "include"` (already set in this repo).
 - Confirm `COOKIE_SECURE=true` in HTTPS production.
+- For cross-domain frontend/backend, set `COOKIE_SAME_SITE=none`.
 
 ### 2) Prisma cannot connect
 - Re-check `DATABASE_URL` and `DIRECT_URL`.
