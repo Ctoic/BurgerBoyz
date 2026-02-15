@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -127,7 +127,20 @@
   }
 
   .card-food {
-    @apply bg-card rounded-3xl overflow-hidden shadow-[var(--shadow-card)] transition-all duration-300 hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-2 border-2 border-transparent hover:border-primary;
+    @apply relative isolate overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-card)] transition-all duration-300;
+  }
+
+  .card-food::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-3xl border border-white/30 opacity-80;
+  }
+
+  .card-food:hover {
+    @apply -translate-y-1 border-primary/60 shadow-[0_18px_40px_-18px_hsl(var(--primary)/0.45)];
+  }
+
+  .card-food:focus-within {
+    @apply -translate-y-1 border-primary ring-2 ring-primary/30;
   }
 
   .btn-order {

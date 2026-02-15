@@ -1,0 +1,58 @@
+@startuml
+title BurgerBoyz Deployment UML (Netlify + Railway + Supabase)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+
+actor Customer
+actor Admin
+
+node "Netlify" as netlify {
+  artifact "BurgerBoyz Frontend SPA\n(Vite + React build: dist/*)" as frontend
+}
+
+node "Railway" as railway {
+  node "Backend Service\n(NestJS API /api)" as backend
+  component "Prisma Client" as prisma
+  component "Domain Modules\nAuth, Menu, Orders, Support,\nUsers, Notifications, Zones" as modules
+  component "Release Command\nnpx prisma migrate deploy" as migrate
+}
+
+database "Supabase PostgreSQL\n(Primary DB)" as supabase
+
+cloud "OpenStreetMap/Nominatim\n(geocoding + reverse geocoding)" as osm
+cloud "PayPal API\n(future live integration)" as paypal
+
+node "GitHub Repository" as github
+
+Customer --> frontend : HTTPS
+Admin --> frontend : HTTPS
+frontend --> backend : HTTPS /api\ncookies + JSON
+
+backend --> modules
+backend --> prisma
+prisma --> supabase : Postgres SSL\nDATABASE_URL / DIRECT_URL
+
+backend --> osm : HTTPS (location search/reverse)
+frontend --> paypal : JS SDK flow (checkout UI/future)
+
+github --> netlify : CI/CD build + deploy
+github --> railway : CI/CD build + deploy
+railway --> migrate : Post-deploy task
+migrate --> supabase : Apply schema migrations
+
+note right of frontend
+Required env:
+VITE_API_URL=https://<railway-app>/api
+end note
+
+note right of backend
+Required env:
+FRONTEND_ORIGIN=https://<netlify-site>
+JWT_SECRET, COOKIE_SECURE=true
+DATABASE_URL, DIRECT_URL
+end note
+
+@enduml
+

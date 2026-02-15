@@ -2,12 +2,13 @@ import Layout from "@/components/Layout";
 import OrderFlowVisualizer from "@/components/OrderFlowVisualizer";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
+import { formatCurrency } from "@/lib/money";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Cart = () => {
-  const { items, subtotal, order, resetOrder, updateQuantity, removeItem } = useCart();
-  const isDelivered = order?.stage === "delivered";
+  const { items, subtotalCents, order, resetOrder, updateQuantity, removeItem } = useCart();
+  const isDelivered = order?.status === "DELIVERED";
 
   return (
     <Layout>
@@ -48,8 +49,8 @@ const Cart = () => {
             <div className="grid gap-8 lg:grid-cols-[2fr,1fr]">
               <div className="space-y-6">
                 {items.map((item) => {
-                  const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.price, 0);
-                  const itemPrice = (item.basePrice + addOnTotal) * item.quantity;
+                  const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.priceCents, 0);
+                  const itemPriceCents = (item.basePriceCents + addOnTotal) * item.quantity;
 
                   return (
                     <div key={item.id} className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-4 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:p-6">
@@ -72,7 +73,9 @@ const Cart = () => {
                         {item.addOns.length > 0 && (
                           <div className="mt-3 text-sm text-muted-foreground">
                             <span className="font-semibold text-foreground">Add-ons:</span>{" "}
-                            {item.addOns.map((addOn) => `${addOn.name} (+£${addOn.price.toFixed(2)})`).join(", ")}
+                            {item.addOns
+                              .map((addOn) => `${addOn.name} (+${formatCurrency(addOn.priceCents)})`)
+                              .join(", ")}
                           </div>
                         )}
 
@@ -101,7 +104,9 @@ const Cart = () => {
                               <Plus className="mx-auto h-4 w-4" />
                             </button>
                           </div>
-                          <span className="font-display text-xl text-primary">£{itemPrice.toFixed(2)}</span>
+                          <span className="font-display text-xl text-primary">
+                            {formatCurrency(itemPriceCents)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -113,7 +118,7 @@ const Cart = () => {
                 <h3 className="font-display text-2xl text-foreground mb-4">Order Summary</h3>
                 <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
                   <span>Subtotal</span>
-                  <span>£{subtotal.toFixed(2)}</span>
+                  <span>{formatCurrency(subtotalCents)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground mb-6">
                   <span>Delivery</span>
@@ -121,7 +126,7 @@ const Cart = () => {
                 </div>
                 <div className="flex items-center justify-between text-lg font-semibold text-foreground border-t border-border pt-4">
                   <span>Total</span>
-                  <span>£{subtotal.toFixed(2)}</span>
+                  <span>{formatCurrency(subtotalCents)}</span>
                 </div>
                 <Link to="/checkout" className="block mt-6">
                   <Button className="w-full rounded-full bg-brand-black py-6 text-lg text-white hover:bg-brand-black/90">

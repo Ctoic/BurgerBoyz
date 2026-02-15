@@ -1,9 +1,30 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Flame } from "lucide-react";
 import heroBurger from "@/assets/hero-burger.jpg";
 
+const HERO_SLIDES = [
+  "JUICY BEEF",
+  "CHICKEN BURGER",
+  "WRAPS",
+  "HOT DOGS",
+  "WINGS",
+] as const;
+
 const HeroSection = () => {
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 2200);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const activeSlide = HERO_SLIDES[activeSlideIndex];
+
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
       {/* Yellow gradient background */}
@@ -29,12 +50,15 @@ const HeroSection = () => {
             </span>
           </div>
 
-          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl text-brand-black leading-none mb-6 animate-slide-up">
-            JUICY BEEF.
-            <br />
-            <span className="text-white drop-shadow-lg">FRESH FRIED CHICKEN.</span>
-            <br />
-            <span className="text-accent">BURGER BOYS.</span>
+          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl text-brand-black leading-none mb-6">
+            <span className="block animate-slide-up">CRAVE THIS.</span>
+            <span
+              key={activeSlide}
+              className="mt-1 block text-white drop-shadow-lg animate-fade-in"
+              aria-live="polite"
+            >
+              {activeSlide}.
+            </span>
           </h1>
 
           <p className="text-lg md:text-xl text-brand-black/80 max-w-xl mb-10 font-medium animate-fade-in" style={{ animationDelay: "0.2s" }}>

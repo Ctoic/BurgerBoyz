@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ORDER_STAGE_SEQUENCE,
-  OrderStage,
-  getOrderStageInfo,
-  useCart,
-} from "@/contexts/CartContext";
+import { useMemo } from "react";
+import { useCart } from "@/contexts/CartContext";
+import type { ApiOrderStatus } from "@/lib/types";
 
-type FlowStepKey = "cart" | "checkout" | "status" | OrderStage;
+type FlowStepKey = "cart" | "checkout" | "status" | ApiOrderStatus;
 type StepContext = "cart" | "checkout" | "status";
 
 type FlowStep = {
@@ -14,154 +10,117 @@ type FlowStep = {
   label: string;
 };
 
-const FLOW_STEPS: FlowStep[] = [
+const STATUS_LABELS: Record<ApiOrderStatus, string> = {
+  PLACED: "Order placed",
+  PREPARING: "Preparing",
+  READY_FOR_PICKUP: "Ready for pickup",
+  OUT_FOR_DELIVERY: "Out for delivery",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+const PRE_ORDER_STEPS: FlowStep[] = [
   { key: "cart", label: "Cart" },
   { key: "checkout", label: "Checkout" },
   { key: "status", label: "Status" },
-  { key: "placed", label: "Order placed" },
-  { key: "preparing", label: "Preparing" },
-  { key: "out_for_delivery", label: "Out for delivery" },
-  { key: "delivered", label: "Delivered" },
 ];
 
-const STAGE_LABELS: Record<OrderStage, string> = {
-  placed: "Order placed",
-  preparing: "Preparing",
-  out_for_delivery: "Out for delivery",
-  delivered: "Delivered",
-};
+const DELIVERY_STEPS: FlowStep[] = [
+  { key: "PLACED", label: STATUS_LABELS.PLACED },
+  { key: "PREPARING", label: STATUS_LABELS.PREPARING },
+  { key: "OUT_FOR_DELIVERY", label: STATUS_LABELS.OUT_FOR_DELIVERY },
+  { key: "DELIVERED", label: STATUS_LABELS.DELIVERED },
+];
 
-const getActiveKey = (
-  currentStep: StepContext,
-  orderStage: OrderStage | null,
-): FlowStepKey => {
-  if (orderStage) return orderStage;
-  return currentStep;
-};
-
-const getStepState = (index: number, activeIndex: number) => {
-  if (index < activeIndex) return "complete";
-  if (index === activeIndex) return "current";
-  return "upcoming";
-};
+const PICKUP_STEPS: FlowStep[] = [
+  { key: "PLACED", label: STATUS_LABELS.PLACED },
+  { key: "PREPARING", label: STATUS_LABELS.PREPARING },
+  { key: "READY_FOR_PICKUP", label: STATUS_LABELS.READY_FOR_PICKUP },
+  { key: "DELIVERED", label: STATUS_LABELS.DELIVERED },
+];
 
 const OrderFlowVisualizer = ({ currentStep }: { currentStep: StepContext }) => {
   const { order } = useCart();
-  const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (!order || order.stage === "delivered") return;
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => window.clearInterval(intervalId);
+  const steps = useMemo<FlowStep[]>(() => {
+    if (!order) return PRE_ORDER_STEPS;
+
+    const baseSteps = order.fulfillmentType === "PICKUP" ? PICKUP_STEPS : DELIVERY_STEPS;
+    if (order.status === "CANCELLED") {
+      return [...baseSteps, { key: "CANCELLED", label: STATUS_LABELS.CANCELLED }];
+    }
+    return baseSteps;
   }, [order]);
 
-  const orderInfo = useMemo(() => {
-    if (!order) return null;
-    return getOrderStageInfo(order, now);
-  }, [order, now]);
+  const activeKey: FlowStepKey = order ? order.status : currentStep;
+  const activeIndex = Math.max(0, steps.findIndex((step) => step.key === activeKey));
+  const progressPercent = steps.length > 1 ? (activeIndex / (steps.length - 1)) * 100 : 0;
 
-  const activeKey = getActiveKey(currentStep, orderInfo?.stage ?? null);
-  const activeIndex = Math.max(
-    0,
-    FLOW_STEPS.findIndex((step) => step.key === activeKey),
-  );
-
-  const nextStageCountdownSeconds = useMemo(() => {
-    if (!orderInfo?.nextTransitionAt) return null;
-    const diffMs = orderInfo.nextTransitionAt - now;
-    if (diffMs <= 0) return 0;
-    return Math.ceil(diffMs / 1000);
-  }, [orderInfo, now]);
-
-  const placedTimeLabel = useMemo(() => {
-    if (!order) return null;
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(order.placedAt));
-  }, [order]);
-
-  const stageSequenceText = ORDER_STAGE_SEQUENCE.map((stage) => STAGE_LABELS[stage]).join(
-    " → ",
-  );
+  const headline = order ? "Order Tracking" : "Order Flow";
+  const subline = order
+    ? "Follow your order as it moves through each stage."
+    : "Complete each step to place your order.";
 
   return (
     <div className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h3 className="font-display text-2xl text-foreground">Order Flow (Demo)</h3>
-          <p className="text-sm text-muted-foreground">
-            Uses local storage to persist cart data and simulate live order updates.
-          </p>
+      <div className="flex flex-col gap-4">
+        <div>
+          <h3 className="font-display text-2xl text-foreground">{headline}</h3>
+          <p className="text-sm text-muted-foreground">{subline}</p>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span className="rounded-full bg-muted px-3 py-1">{stageSequenceText}</span>
-          {order && placedTimeLabel && (
-            <span className="rounded-full bg-secondary px-3 py-1 text-secondary-foreground">
-              Placed at {placedTimeLabel}
-            </span>
-          )}
-        </div>
+        <div className="relative mt-4">
+          <div className="absolute left-0 right-0 top-4 h-1 rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          {FLOW_STEPS.map((step, index) => {
-            const state = getStepState(index, activeIndex);
-            const isCurrent = state === "current";
-            const isComplete = state === "complete";
-
-            return (
-              <div
-                key={step.key}
-                className={[
-                  "flex items-center gap-3 rounded-2xl border p-3 transition-colors",
-                  isCurrent
-                    ? "border-primary bg-primary/5"
-                    : isComplete
-                      ? "border-accent bg-accent/5"
-                      : "border-border bg-background",
-                ].join(" ")}
-              >
-                <div
-                  className={[
-                    "flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold",
-                    isCurrent
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : isComplete
-                        ? "border-accent bg-accent text-accent-foreground"
-                        : "border-border bg-white text-muted-foreground",
-                  ].join(" ")}
-                >
-                  {index + 1}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-foreground">{step.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {isComplete ? "Done" : isCurrent ? "Active" : "Next"}
+          <div className="flex items-start justify-between">
+            {steps.map((step, index) => {
+              const isComplete = index < activeIndex;
+              const isCurrent = index === activeIndex;
+              return (
+                <div key={step.key} className="flex w-full flex-col items-center gap-2">
+                  <div
+                    className={[
+                      "relative z-10 flex h-9 w-9 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors",
+                      isComplete
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : isCurrent
+                          ? "border-primary bg-background text-primary"
+                          : "border-border bg-background text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {index + 1}
+                  </div>
+                  <span
+                    className={[
+                      "text-center text-xs font-semibold",
+                      isComplete || isCurrent ? "text-foreground" : "text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {step.label}
                   </span>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
-        {order && orderInfo && (
-          <div className="flex flex-col gap-2 rounded-2xl border border-border bg-background p-4 text-sm">
+        {order && (
+          <div className="mt-4 rounded-2xl border border-border bg-background px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold text-foreground">Order #{order.id.slice(0, 8)}</span>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                {STAGE_LABELS[orderInfo.stage]}
+                {STATUS_LABELS[order.status]}
               </span>
-              {orderInfo.nextStage && nextStageCountdownSeconds !== null && (
-                <span className="text-xs text-muted-foreground">
-                  Advancing to {STAGE_LABELS[orderInfo.nextStage]} in {nextStageCountdownSeconds}s
-                </span>
-              )}
             </div>
-            <div className="text-muted-foreground">
-              Your cart is cleared after placing an order, but the order timeline remains visible.
+            <div className="mt-1 text-xs text-muted-foreground">
+              {order.fulfillmentType === "PICKUP"
+                ? "Pickup order in progress."
+                : "Delivery order in progress."}
             </div>
           </div>
         )}

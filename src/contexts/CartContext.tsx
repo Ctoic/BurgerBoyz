@@ -1,107 +1,49 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import type { ApiOrder, ApiOrderType } from "@/lib/types";
 
 interface CartAddOn {
+  id: string;
   name: string;
-  price: number;
+  priceCents: number;
 }
 
 export interface CartItem {
   id: string;
+  menuItemId: string;
   name: string;
   description: string;
   image: string;
-  basePrice: number;
+  basePriceCents: number;
   addOns: CartAddOn[];
   removals: string[];
   quantity: number;
+  sourceType?: ApiOrderType;
 }
 
-export type OrderStage = "placed" | "preparing" | "out_for_delivery" | "delivered";
-export type PaymentMethod = "card" | "apple_pay" | "cash";
+export type PaymentMethod = "cash" | "stripe" | "paypal";
+export type FulfillmentType = "delivery" | "pickup";
 
-export interface OrderState {
-  id: string;
-  items: CartItem[];
-  subtotal: number;
-  placedAt: number;
-  stage: OrderStage;
-  stageStartedAt: number;
+export interface AddressInput {
+  line1: string;
+  line2?: string;
+  city: string;
+  postcode: string;
+  instructions?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface PlaceOrderPayload {
   paymentMethod: PaymentMethod;
+  fulfillmentType: FulfillmentType;
+  address?: AddressInput;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
 }
 
-const CART_STORAGE_KEY = "burgerboyz_cart_v1";
-const ORDER_STORAGE_KEY = "burgerboyz_order_v1";
-const ADDRESS_STORAGE_KEY = "burgerboyz_address_v1";
-
-export const ORDER_STAGE_SEQUENCE: OrderStage[] = [
-  "placed",
-  "preparing",
-  "out_for_delivery",
-  "delivered",
-];
-
-export const ORDER_STAGE_DURATIONS_MS: Record<OrderStage, number> = {
-  placed: 4000,
-  preparing: 7000,
-  out_for_delivery: 9000,
-  delivered: 0,
-};
-
-const getCumulativeDurationUntilStage = (stage: OrderStage) => {
-  let total = 0;
-  for (const currentStage of ORDER_STAGE_SEQUENCE) {
-    if (currentStage === stage) break;
-    total += ORDER_STAGE_DURATIONS_MS[currentStage];
-  }
-  return total;
-};
-
-export const getOrderStageInfo = (order: OrderState, now = Date.now()) => {
-  const elapsed = Math.max(0, now - order.placedAt);
-  let cumulative = 0;
-
-  for (let index = 0; index < ORDER_STAGE_SEQUENCE.length; index += 1) {
-    const stage = ORDER_STAGE_SEQUENCE[index];
-    const duration = ORDER_STAGE_DURATIONS_MS[stage];
-    const stageStartAt = order.placedAt + cumulative;
-    const nextTransitionAt = stageStartAt + duration;
-
-    if (stage === "delivered") {
-      return {
-        stage,
-        stageIndex: index,
-        stageStartAt,
-        nextStage: null as OrderStage | null,
-        nextTransitionAt: null as number | null,
-      };
-    }
-
-    if (elapsed < cumulative + duration) {
-      const nextStage = ORDER_STAGE_SEQUENCE[index + 1] ?? null;
-      return {
-        stage,
-        stageIndex: index,
-        stageStartAt,
-        nextStage,
-        nextTransitionAt,
-      };
-    }
-
-    cumulative += duration;
-  }
-
-  const deliveredIndex = ORDER_STAGE_SEQUENCE.length - 1;
-  const deliveredStartAt =
-    order.placedAt + getCumulativeDurationUntilStage("delivered");
-
-  return {
-    stage: "delivered" as OrderStage,
-    stageIndex: deliveredIndex,
-    stageStartAt: deliveredStartAt,
-    nextStage: null,
-    nextTransitionAt: null,
-  };
-};
+export type OrderState = ApiOrder;
 
 interface CartContextValue {
   items: CartItem[];
@@ -112,11 +54,17 @@ interface CartContextValue {
   address: string | null;
   setAddress: (nextAddress: string | null) => void;
   order: OrderState | null;
-  placeOrder: (paymentMethod: PaymentMethod) => OrderState | null;
+  setOrder: (order: OrderState | null) => void;
+  placeOrder: (payload: PlaceOrderPayload) => Promise<OrderState | null>;
   resetOrder: () => void;
   totalItems: number;
-  subtotal: number;
+  subtotalCents: number;
+  isReady: boolean;
 }
+
+const CART_STORAGE_KEY = "burgerboyz_cart_v2";
+const ORDER_STORAGE_KEY = "burgerboyz_order_v2";
+const ADDRESS_STORAGE_KEY = "burgerboyz_address_v1";
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
@@ -127,11 +75,23 @@ const createId = () => {
   return `cart_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
+const paymentMethodMap: Record<PaymentMethod, "CASH" | "STRIPE"> = {
+  cash: "CASH",
+  stripe: "STRIPE",
+  // Temporary UI-only path until backend PAYPAL support is implemented.
+  paypal: "CASH",
+};
+
+const fulfillmentTypeMap: Record<FulfillmentType, "DELIVERY" | "PICKUP"> = {
+  delivery: "DELIVERY",
+  pickup: "PICKUP",
+};
+
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [items, setItems] = useState<CartItem[]>([]);
   const [address, setAddressState] = useState<string | null>(null);
-  const [order, setOrder] = useState<OrderState | null>(null);
-  const autoAdvanceTimeoutRef = useRef<number | null>(null);
+  const [order, setOrderState] = useState<OrderState | null>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -151,16 +111,11 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const storedOrder = window.localStorage.getItem(ORDER_STORAGE_KEY);
       if (storedOrder) {
-        const parsedOrder = JSON.parse(storedOrder) as Partial<OrderState>;
-        if (
-          parsedOrder &&
-          typeof parsedOrder === "object" &&
-          Array.isArray(parsedOrder.items)
-        ) {
-          const paymentMethod: PaymentMethod = parsedOrder.paymentMethod ?? "card";
-          setOrder({
-            ...(parsedOrder as OrderState),
-            paymentMethod,
+        const parsedOrder = JSON.parse(storedOrder) as OrderState;
+        if (parsedOrder && typeof parsedOrder === "object") {
+          setOrderState({
+            ...parsedOrder,
+            orderType: parsedOrder.orderType === "DEAL" ? "DEAL" : "NORMAL",
           });
         }
       }
@@ -176,6 +131,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     } catch {
       window.localStorage.removeItem(ADDRESS_STORAGE_KEY);
     }
+
+    setIsReady(true);
   }, []);
 
   useEffect(() => {
@@ -200,58 +157,6 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }
     window.localStorage.setItem(ADDRESS_STORAGE_KEY, address);
   }, [address]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!order) return;
-
-    if (autoAdvanceTimeoutRef.current !== null) {
-      window.clearTimeout(autoAdvanceTimeoutRef.current);
-      autoAdvanceTimeoutRef.current = null;
-    }
-
-    const info = getOrderStageInfo(order);
-
-    if (order.stage !== info.stage || order.stageStartedAt !== info.stageStartAt) {
-      setOrder((prev) => {
-        if (!prev) return prev;
-        if (prev.stage === info.stage && prev.stageStartedAt === info.stageStartAt) {
-          return prev;
-        }
-        return {
-          ...prev,
-          stage: info.stage,
-          stageStartedAt: info.stageStartAt,
-        };
-      });
-      return;
-    }
-
-    if (!info.nextTransitionAt || info.stage === "delivered") return;
-
-    const delay = Math.max(0, info.nextTransitionAt - Date.now());
-    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
-      setOrder((prev) => {
-        if (!prev) return prev;
-        const nextInfo = getOrderStageInfo(prev);
-        if (prev.stage === nextInfo.stage && prev.stageStartedAt === nextInfo.stageStartAt) {
-          return prev;
-        }
-        return {
-          ...prev,
-          stage: nextInfo.stage,
-          stageStartedAt: nextInfo.stageStartAt,
-        };
-      });
-    }, delay);
-
-    return () => {
-      if (autoAdvanceTimeoutRef.current !== null) {
-        window.clearTimeout(autoAdvanceTimeoutRef.current);
-        autoAdvanceTimeoutRef.current = null;
-      }
-    };
-  }, [order]);
 
   const addItem: CartContextValue["addItem"] = (item) => {
     const quantity = item.quantity ?? 1;
@@ -283,34 +188,52 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setAddressState(trimmed ? trimmed : null);
   };
 
-  const placeOrder = (paymentMethod: PaymentMethod) => {
-    if (items.length === 0) return null;
-    const placedAt = Date.now();
-    const newOrder: OrderState = {
-      id: createId(),
-      items,
-      subtotal,
-      placedAt,
-      stage: "placed",
-      stageStartedAt: placedAt,
-      paymentMethod,
-    };
-    setOrder(newOrder);
-    setItems([]);
-    return newOrder;
+  const setOrder = (nextOrder: OrderState | null) => {
+    setOrderState(nextOrder);
   };
 
-  const resetOrder = () => setOrder(null);
+  const placeOrder = async (payload: PlaceOrderPayload) => {
+    if (items.length === 0) return null;
+
+    const orderPayload = {
+      paymentMethod: paymentMethodMap[payload.paymentMethod],
+      fulfillmentType: fulfillmentTypeMap[payload.fulfillmentType],
+      orderType: items.some((item) => item.sourceType === "DEAL") ? "DEAL" : "NORMAL",
+      customerName: payload.customerName,
+      customerEmail: payload.customerEmail,
+      customerPhone: payload.customerPhone,
+      address:
+        payload.fulfillmentType === "delivery" ? payload.address : undefined,
+      items: items.map((item) => ({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        removals: item.removals,
+        addOnIds: item.addOns.map((addOn) => addOn.id),
+      })),
+    };
+
+    const createdOrder = await apiFetch<OrderState>("/orders", {
+      method: "POST",
+      body: JSON.stringify(orderPayload),
+    });
+
+    setOrderState(createdOrder);
+    setItems([]);
+
+    return createdOrder;
+  };
+
+  const resetOrder = () => setOrderState(null);
 
   const totalItems = useMemo(
     () => items.reduce((total, item) => total + item.quantity, 0),
     [items],
   );
 
-  const subtotal = useMemo(() => {
+  const subtotalCents = useMemo(() => {
     return items.reduce((total, item) => {
-      const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.price, 0);
-      return total + (item.basePrice + addOnTotal) * item.quantity;
+      const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.priceCents, 0);
+      return total + (item.basePriceCents + addOnTotal) * item.quantity;
     }, 0);
   }, [items]);
 
@@ -324,12 +247,14 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       address,
       setAddress,
       order,
+      setOrder,
       placeOrder,
       resetOrder,
       totalItems,
-      subtotal,
+      subtotalCents,
+      isReady,
     }),
-    [address, items, order, totalItems, subtotal],
+    [address, items, order, totalItems, subtotalCents, isReady],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

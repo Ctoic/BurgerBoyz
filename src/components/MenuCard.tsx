@@ -28,10 +28,11 @@ const MenuCard = ({
 
   return (
     <div
-      className="card-food group relative rounded-2xl sm:rounded-3xl cursor-pointer"
+      className="card-food group cursor-pointer rounded-2xl sm:rounded-3xl"
       onClick={onClick}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `View ${name}` : undefined}
       onKeyDown={(event) => {
         if (!onClick) return;
         if (event.key === "Enter" || event.key === " ") {
@@ -41,41 +42,45 @@ const MenuCard = ({
       }}
     >
       {isPopular && (
-        <div className="absolute top-4 left-4 z-10 bg-accent text-accent-foreground px-3 py-1 rounded-full text-sm font-bold">
-          🔥 Popular
+        <div className="absolute left-3 top-3 z-10 rounded-full border border-accent/30 bg-accent px-3 py-1 text-xs font-bold text-accent-foreground shadow-sm sm:left-4 sm:top-4 sm:text-sm">
+          Popular
         </div>
       )}
-      
-      {/* Image */}
-      <div className="relative h-36 sm:h-56 lg:h-60 overflow-hidden">
+
+      <div className="relative h-36 overflow-hidden sm:h-56 lg:h-60">
         <img
           src={image}
           alt={name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-t from-foreground/65 via-foreground/20 to-transparent opacity-80 transition-opacity duration-300 group-hover:opacity-100" />
         <Button
           size="icon"
-          className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-white text-foreground shadow-md hover:bg-white sm:hidden"
+          className="absolute bottom-3 right-3 h-10 w-10 rounded-full border border-border/80 bg-white text-foreground shadow-md hover:scale-105 hover:bg-white sm:hidden"
           onClick={handleAddToCartClick}
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="h-5 w-5" />
         </Button>
       </div>
 
-      {/* Content */}
-      <div className="p-3 sm:p-5">
-        <h3 className="font-display text-base sm:text-xl text-foreground mb-2 line-clamp-1">{name}</h3>
-        <p className="text-muted-foreground text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">{description}</p>
-        
-        <div className="flex items-center justify-between">
-          <span className="font-display text-lg sm:text-2xl text-primary">£{price.toFixed(2)}</span>
+      <div className="space-y-4 p-3 sm:p-5">
+        <div>
+          <h3 className="mb-2 line-clamp-1 font-display text-base text-foreground sm:text-xl">
+            {name}
+          </h3>
+          <p className="line-clamp-2 text-xs text-muted-foreground sm:text-sm">{description}</p>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-border/80 pt-3">
+          <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 font-display text-lg text-primary sm:text-2xl">
+            £{price.toFixed(2)}
+          </span>
           <Button
-            className="hidden sm:flex bg-primary hover:bg-[hsl(var(--brand-yellow-dark))] text-primary-foreground rounded-full px-4 py-2 items-center gap-2 transition-all hover:scale-105"
+            className="hidden rounded-full border border-primary/40 bg-primary px-4 py-2 text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-[hsl(var(--brand-yellow-dark))] sm:flex"
             onClick={handleAddToCartClick}
           >
-            <Plus className="w-4 h-4" />
-            Add to cart
+            <Plus className="h-4 w-4" />
+            Add
           </Button>
         </div>
       </div>

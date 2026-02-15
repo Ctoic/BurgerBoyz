@@ -3,60 +3,89 @@ import { Link, useNavigate } from "react-router-dom";
 import Layout from "@/components/Layout";
 import OrderFlowVisualizer from "@/components/OrderFlowVisualizer";
 import { Button } from "@/components/ui/button";
-import {
-  PaymentMethod,
-  getOrderStageInfo,
-  useCart,
-} from "@/contexts/CartContext";
+import { useCart } from "@/contexts/CartContext";
+import { formatCurrency } from "@/lib/money";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
+import type { ApiOrder, ApiOrderStatus } from "@/lib/types";
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  card: "Credit / Debit Card",
-  apple_pay: "Apple Pay",
-  cash: "Cash on Delivery",
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Cash on Delivery",
+  PAYPAL: "PayPal",
+  STRIPE: "Stripe (Coming soon)",
 };
 
-const STAGE_LABELS = {
-  placed: "Order placed",
-  preparing: "Preparing",
-  out_for_delivery: "Out for delivery",
-  delivered: "Delivered",
+const STAGE_LABELS: Record<ApiOrderStatus, string> = {
+  PLACED: "Order placed",
+  PREPARING: "Preparing",
+  READY_FOR_PICKUP: "Ready for pickup",
+  OUT_FOR_DELIVERY: "Out for delivery",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+const ORDER_TYPE_LABELS = {
+  NORMAL: "Normal Order",
+  DEAL: "Deal Order",
 } as const;
 
 const OrderStatus = () => {
-  const { order, resetOrder } = useCart();
+  const { order, setOrder, resetOrder, isReady } = useCart();
   const navigate = useNavigate();
-  const [now, setNow] = useState(() => Date.now());
+  const [showDeliveredSuccess, setShowDeliveredSuccess] = useState(false);
+
+  const orderId = order?.id;
+
+  const { data } = useQuery({
+    queryKey: ["order", orderId],
+    queryFn: () => apiFetch<ApiOrder>(`/orders/${orderId}`),
+    enabled: Boolean(orderId),
+    refetchInterval: 5000,
+  });
 
   useEffect(() => {
-    if (!order) {
+    if (!isReady) return;
+    if (!orderId) {
       navigate("/cart", { replace: true });
-      return;
     }
-    if (order.stage === "delivered") return;
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => window.clearInterval(intervalId);
-  }, [order, navigate]);
+  }, [orderId, navigate, isReady]);
 
-  const orderInfo = useMemo(() => {
-    if (!order) return null;
-    return getOrderStageInfo(order, now);
-  }, [order, now]);
+  useEffect(() => {
+    if (data) {
+      setOrder(data);
+    }
+  }, [data, setOrder]);
+
+  const resolvedOrder = data ?? order;
 
   const placedAtLabel = useMemo(() => {
-    if (!order) return "";
+    if (!resolvedOrder) return "";
     return new Intl.DateTimeFormat(undefined, {
       weekday: "short",
       hour: "numeric",
       minute: "2-digit",
-    }).format(new Date(order.placedAt));
-  }, [order]);
+    }).format(new Date(resolvedOrder.createdAt));
+  }, [resolvedOrder]);
 
-  if (!order || !orderInfo) return null;
+  useEffect(() => {
+    if (resolvedOrder?.status !== "DELIVERED") return;
+    setShowDeliveredSuccess(true);
+    const timer = window.setTimeout(() => setShowDeliveredSuccess(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [resolvedOrder?.status]);
 
-  const paymentLabel = PAYMENT_METHOD_LABELS[order.paymentMethod];
-  const isDelivered = orderInfo.stage === "delivered";
+  if (!resolvedOrder) return null;
+
+  const demoPaymentMethod =
+    typeof window !== "undefined"
+      ? window.sessionStorage.getItem("burgerboyz_demo_payment_method")
+      : null;
+  const paymentLabel =
+    demoPaymentMethod === "paypal" && resolvedOrder.paymentMethod === "CASH"
+      ? "PayPal (Demo UI)"
+      : PAYMENT_METHOD_LABELS[resolvedOrder.paymentMethod] ?? resolvedOrder.paymentMethod;
+  const resolvedOrderType = resolvedOrder.orderType === "DEAL" ? "DEAL" : "NORMAL";
+  const isDelivered = resolvedOrder.status === "DELIVERED";
 
   return (
     <Layout>
@@ -64,7 +93,7 @@ const OrderStatus = () => {
         <div className="container-custom section-padding pt-24 pb-6 md:pt-28">
           <h1 className="font-display text-3xl text-foreground md:text-5xl">Order Status</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
-            Track your order in real time with a demo status timeline.
+            Track your order in real time.
           </p>
         </div>
       </section>
@@ -75,17 +104,46 @@ const OrderStatus = () => {
             <OrderFlowVisualizer currentStep="status" />
           </div>
 
+          {showDeliveredSuccess && (
+            <div className="mx-auto mb-8 max-w-5xl">
+              <div className="relative overflow-hidden rounded-3xl border border-primary/30 bg-gradient-to-r from-primary/15 via-secondary/10 to-accent/10 p-6 shadow-[var(--shadow-card)] animate-scale-in">
+                <div className="pointer-events-none absolute -left-10 -top-10 h-32 w-32 rounded-full bg-primary/20 blur-2xl animate-float" />
+                <div className="pointer-events-none absolute -right-10 -bottom-10 h-32 w-32 rounded-full bg-secondary/20 blur-2xl animate-float" />
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg animate-pulse-slow">
+                    ✓
+                  </div>
+                  <div>
+                    <h2 className="font-display text-2xl text-foreground">Order Delivered!</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Enjoy your meal. Thanks for ordering with Burger Guys.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[2fr,1fr]">
             <div className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="font-display text-2xl text-foreground">
-                  Order #{order.id.slice(0, 8)}
+                  Order #{resolvedOrder.id.slice(0, 8)}
                 </h2>
                 <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                  {STAGE_LABELS[orderInfo.stage]}
+                  {STAGE_LABELS[resolvedOrder.status]}
                 </span>
                 <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
                   {paymentLabel}
+                </span>
+                <span
+                  className={
+                    resolvedOrderType === "DEAL"
+                      ? "rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent"
+                      : "rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground"
+                  }
+                >
+                  {ORDER_TYPE_LABELS[resolvedOrderType]}
                 </span>
               </div>
 
@@ -94,9 +152,9 @@ const OrderStatus = () => {
               </p>
 
               <div className="mt-6 space-y-4">
-                {order.items.map((item) => {
-                  const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.price, 0);
-                  const itemPrice = (item.basePrice + addOnTotal) * item.quantity;
+                {resolvedOrder.items.map((item) => {
+                  const addOnTotal = item.addOns.reduce((sum, addOn) => sum + addOn.priceCents, 0);
+                  const itemPriceCents = (item.basePriceCents + addOnTotal) * item.quantity;
                   return (
                     <div
                       key={item.id}
@@ -113,7 +171,7 @@ const OrderStatus = () => {
                         </div>
                       </div>
                       <div className="font-display text-base text-primary">
-                        £{itemPrice.toFixed(2)}
+                        {formatCurrency(itemPriceCents)}
                       </div>
                     </div>
                   );
@@ -125,15 +183,15 @@ const OrderStatus = () => {
               <h3 className="mb-4 font-display text-2xl text-foreground">Summary</h3>
               <div className="mb-3 flex items-center justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span>
-                <span>£{order.subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(resolvedOrder.subtotalCents)}</span>
               </div>
               <div className="mb-6 flex items-center justify-between text-sm text-muted-foreground">
                 <span>Delivery</span>
-                <span>Free</span>
+                <span>{formatCurrency(resolvedOrder.deliveryFeeCents)}</span>
               </div>
               <div className="flex items-center justify-between border-t border-border pt-4 text-lg font-semibold text-foreground">
                 <span>Total</span>
-                <span>£{order.subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(resolvedOrder.totalCents)}</span>
               </div>
 
               <div className="mt-6 flex flex-col gap-3">
