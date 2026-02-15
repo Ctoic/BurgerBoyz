@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Mail, MessageSquare, MapPin, Navigation } from "lucide-react";
+import { Menu, X, MessageSquare, MapPin, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -51,8 +51,6 @@ const readStoredLocationPreference = (): StoredLocationPreference | null => {
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportMessage, setSupportMessage] = useState("");
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
@@ -71,7 +69,7 @@ const Header = () => {
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const publicZonesQuery = useQuery({
@@ -529,55 +527,61 @@ const Header = () => {
       </Dialog>
 
       <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
-      <DialogContent className="w-[92vw] max-w-lg rounded-[18px] border border-border bg-card p-8 shadow-[var(--shadow-card)]">
-          <div className="flex flex-col gap-6">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15">
-              <Mail className="h-6 w-6 text-primary" />
+        <DialogContent className="w-[92vw] max-w-[620px] rounded-3xl border border-border bg-card p-0 shadow-[var(--shadow-card)]">
+          <div className="rounded-3xl bg-card px-6 py-7 sm:px-8 sm:py-8">
+            <div className="space-y-1">
+              <h2 className="font-display text-5xl text-foreground">Welcome!</h2>
+              <p className="text-[32px] text-muted-foreground">Sign up or log in to continue</p>
             </div>
-            <div>
-              <h2 className="font-display text-2xl text-foreground">What's your email?</h2>
-              <p className="text-sm text-muted-foreground">
-                We'll check if you already have an account.
-              </p>
-            </div>
-            <Input
-              type="email"
-              placeholder="Email"
-              value={loginEmail}
-              onChange={(event) => setLoginEmail(event.target.value)}
-              className="h-12 rounded-xl"
-            />
-            <Button
-              className="btn-order w-full rounded-full py-6 text-lg"
-              disabled={!loginEmail.trim() || isSubmitting}
-              onClick={async () => {
-                const email = loginEmail.trim();
-                if (!email) return;
-                setIsSubmitting(true);
-                try {
-                  await login(email);
-                  toast({
-                    title: "Welcome back",
-                    description: "You're signed in.",
-                  });
-                  setIsLoginOpen(false);
-                  setLoginEmail("");
-                  navigate("/account");
-                } catch {
-                  setIsLoginOpen(false);
-                  setLoginEmail("");
-                  toast({
-                    title: "Let's get you set up",
-                    description: "Add your details to finish creating your account.",
-                  });
-                  navigate(`/account?email=${encodeURIComponent(email)}`);
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
+
+            <button
+              type="button"
+              className="mt-8 flex h-14 w-full items-center justify-center gap-4 rounded-full border border-border bg-background text-lg font-semibold text-foreground transition-colors hover:border-primary/50"
+              onClick={() =>
+                toast({
+                  title: "Google login coming soon",
+                  description: "For now, use Login or Signup below.",
+                })
+              }
             >
-              {isSubmitting ? "Checking..." : "Continue"}
-            </Button>
+              <span className="text-3xl font-bold leading-none text-primary">G</span>
+              Continue with Google
+            </button>
+
+            <div className="my-7 flex items-center gap-3 text-muted-foreground">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-lg">or</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <div className="space-y-4">
+              <Button
+                className="h-14 w-full rounded-full bg-[#53c72c] text-xl font-semibold text-black hover:bg-[#47b523]"
+                onClick={() => {
+                  setIsLoginOpen(false);
+                  navigate("/account");
+                }}
+              >
+                Login
+              </Button>
+
+              <Button
+                variant="outline"
+                className="h-14 w-full rounded-full border-2 border-brand-black/70 text-xl font-semibold text-foreground hover:bg-muted/30"
+                onClick={() => {
+                  setIsLoginOpen(false);
+                  navigate("/account");
+                }}
+              >
+                Signup
+              </Button>
+            </div>
+
+            <p className="mt-8 text-sm leading-relaxed text-muted-foreground sm:text-base">
+              By signing up, you agree to our{" "}
+              <span className="font-semibold text-foreground">Terms and Conditions</span> and{" "}
+              <span className="font-semibold text-foreground">Privacy Policy.</span>
+            </p>
           </div>
         </DialogContent>
       </Dialog>
