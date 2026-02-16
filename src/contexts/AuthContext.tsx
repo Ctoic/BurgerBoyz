@@ -5,6 +5,17 @@ import type { ApiCustomerUser } from "@/lib/types";
 interface AuthContextValue {
   user: ApiCustomerUser | null;
   isReady: boolean;
+  requestSignupOtp: (email: string) => Promise<{
+    ok: boolean;
+    expiresInSeconds: number;
+    resendAfterSeconds: number;
+  }>;
+  verifySignupOtp: (payload: {
+    email: string;
+    code: string;
+    name?: string;
+    phone?: string;
+  }) => Promise<ApiCustomerUser>;
   signup: (payload: {
     email: string;
     name?: string;
@@ -67,6 +78,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return response.user;
   };
 
+  const requestSignupOtp = async (email: string) => {
+    return apiFetch<{
+      ok: boolean;
+      expiresInSeconds: number;
+      resendAfterSeconds: number;
+    }>("/auth/signup/request-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  };
+
+  const verifySignupOtp = async (payload: {
+    email: string;
+    code: string;
+    name?: string;
+    phone?: string;
+  }) => {
+    const response = await apiFetch<{ user: ApiCustomerUser }>("/auth/signup/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    setUser(response.user);
+    return response.user;
+  };
+
   const login = async (email: string) => {
     const response = await apiFetch<{ user: ApiCustomerUser }>("/auth/login", {
       method: "POST",
@@ -99,7 +135,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const value = useMemo(
-    () => ({ user, isReady, signup, login, updateProfile, logout }),
+    () => ({
+      user,
+      isReady,
+      requestSignupOtp,
+      verifySignupOtp,
+      signup,
+      login,
+      updateProfile,
+      logout,
+    }),
     [user, isReady],
   );
 

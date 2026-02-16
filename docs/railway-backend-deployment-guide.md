@@ -59,6 +59,12 @@ Example:
 - `COOKIE_SAME_SITE`  
 `none` for Netlify (different domain) + Railway API cookie auth.
 
+- `RESEND_API_KEY`  
+Resend API key used to send signup OTP emails.
+
+- `RESEND_FROM_EMAIL`  
+Verified sender email/domain in Resend (example: `noreply@your-domain.com`).
+
 ### Strongly recommended
 
 - `JWT_EXPIRES_IN`  
@@ -74,6 +80,27 @@ Leave unset unless you intentionally need a specific cookie domain.
 
 - `PORT`  
 Do not hardcode. Railway injects it automatically and this backend already listens on `process.env.PORT`.
+
+- `OTP_CODE_LENGTH`  
+Default `6`.
+
+- `OTP_EXPIRY_SECONDS`  
+Default `60`.
+
+- `OTP_RESEND_COOLDOWN_SECONDS`  
+Default `30`.
+
+- `OTP_MAX_ATTEMPTS`  
+Default `5`.
+
+- `OTP_HASH_SECRET`  
+Optional secret for OTP hashing (if unset, backend falls back to `JWT_SECRET`).
+
+- `DATABASE_POOL_CONNECTION_LIMIT`  
+Optional override for Supabase pooler connection limit (recommended `5` for this app).
+
+- `DATABASE_POOL_TIMEOUT_SECONDS`  
+Optional override for DB pool wait timeout (recommended `20`).
 
 ## 5. Supabase Connection Notes (Important)
 
@@ -153,6 +180,21 @@ Then redeploy frontend.
 - Re-check `DATABASE_URL` and `DIRECT_URL`.
 - Confirm Supabase project is running and accepts your connection type.
 - Ensure SSL params are present when required.
+
+### 2b) Prisma pool timeout (`Timed out fetching a new connection from the connection pool`)
+- Cause: `connection_limit=1` on `DATABASE_URL` can bottleneck concurrent requests.
+- Fix:
+  1. Set `DATABASE_POOL_CONNECTION_LIMIT=5`
+  2. Set `DATABASE_POOL_TIMEOUT_SECONDS=20`
+  3. Redeploy backend
+  4. If your `DATABASE_URL` hardcodes `connection_limit=1`, either remove it or redeploy with the updated backend that auto-lifts very low limits.
+
+### 2c) `EmailOtp` table does not exist
+- Cause: OTP migration not deployed yet.
+- Fix:
+  1. Open Railway shell in backend service.
+  2. Run `npx prisma migrate deploy`.
+  3. Redeploy backend if needed.
 
 ### 3) Migration failures on deploy
 - Use `npx prisma migrate deploy`, not `migrate dev`.
