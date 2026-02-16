@@ -6,6 +6,13 @@ import {
 } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 
+function parsePositiveInteger(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.floor(parsed);
+}
+
 function normalizeSupabaseUrl(rawUrl?: string): string | undefined {
   if (!rawUrl) {
     return rawUrl;
@@ -15,13 +22,32 @@ function normalizeSupabaseUrl(rawUrl?: string): string | undefined {
     const url = new URL(rawUrl);
     const isSupabasePooler = url.hostname.endsWith(".pooler.supabase.com");
     const isSupabaseDirect = url.hostname.endsWith(".supabase.co");
+    const configuredConnectionLimit = parsePositiveInteger(
+      process.env.DATABASE_POOL_CONNECTION_LIMIT,
+    );
+    const configuredPoolTimeout = parsePositiveInteger(
+      process.env.DATABASE_POOL_TIMEOUT_SECONDS,
+    );
 
     if (isSupabasePooler) {
+      const existingConnectionLimit = parsePositiveInteger(
+        url.searchParams.get("connection_limit"),
+      );
+
       if (!url.searchParams.has("pgbouncer")) {
         url.searchParams.set("pgbouncer", "true");
       }
-      if (!url.searchParams.has("connection_limit")) {
-        url.searchParams.set("connection_limit", "1");
+      // Avoid single-connection bottlenecks in long-lived containers (e.g. Railway).
+      // If URL has connection_limit=1, lift it to a safer default unless explicitly overridden.
+      if (configuredConnectionLimit) {
+        url.searchParams.set("connection_limit", String(configuredConnectionLimit));
+      } else if (!existingConnectionLimit || existingConnectionLimit < 2) {
+        url.searchParams.set("connection_limit", "5");
+      }
+      if (configuredPoolTimeout) {
+        url.searchParams.set("pool_timeout", String(configuredPoolTimeout));
+      } else if (!url.searchParams.has("pool_timeout")) {
+        url.searchParams.set("pool_timeout", "20");
       }
       if (!url.searchParams.has("sslmode")) {
         url.searchParams.set("sslmode", "require");

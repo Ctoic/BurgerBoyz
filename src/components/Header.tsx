@@ -1,20 +1,19 @@
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, MessageSquare, MapPin, Navigation } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Menu, X, MapPin, Navigation, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import type {
   ApiDeliveryZone,
   ApiDeliveryZoneCheckResponse,
   ApiLocationReverseResponse,
-  SupportMessage,
 } from "@/lib/types";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const LOCATION_STORAGE_KEY = "burgerboyz_selected_location";
 
@@ -32,6 +31,38 @@ interface StoredLocationPreference {
 
 const DEFAULT_MAP_LAT = 53.4808;
 const DEFAULT_MAP_LON = -2.2426;
+const DEMO_OTP_CODE = "123456";
+const DEMO_OTP_EXPIRY_SECONDS = 300;
+type AuthModalView = "welcome" | "login" | "signup";
+
+interface SignupAddressState {
+  houseNo: string;
+  apartment: string;
+  street: string;
+  city: string;
+  postcode: string;
+  instructions: string;
+  latitude: number | null;
+  longitude: number | null;
+  locationLabel: string;
+}
+
+const getGeolocationFailureMessage = (error?: GeolocationPositionError | null) => {
+  if (!error) {
+    return "Could not fetch your current location.";
+  }
+
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return "Location permission denied. Allow location access in your browser settings and try again.";
+    case error.POSITION_UNAVAILABLE:
+      return "Your location is currently unavailable. Check GPS/network and try again.";
+    case error.TIMEOUT:
+      return "Location request timed out. Try again in an open area or with better network.";
+    default:
+      return error.message || "Could not fetch your current location.";
+  }
+};
 
 const readStoredLocationPreference = (): StoredLocationPreference | null => {
   if (typeof window === "undefined") return null;
@@ -51,8 +82,35 @@ const readStoredLocationPreference = (): StoredLocationPreference | null => {
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [supportMessage, setSupportMessage] = useState("");
+  const [authModalView, setAuthModalView] = useState<AuthModalView>("welcome");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [signupState, setSignupState] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
+  const [signupOtpCode, setSignupOtpCode] = useState("");
+  const [isSignupOtpRequested, setIsSignupOtpRequested] = useState(false);
+  const [isDemoOtpMode, setIsDemoOtpMode] = useState(false);
+  const [signupOtpResendIn, setSignupOtpResendIn] = useState(0);
+  const [signupOtpExpiresIn, setSignupOtpExpiresIn] = useState(0);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [isAddressSubmitting, setIsAddressSubmitting] = useState(false);
+  const [isAddressLocating, setIsAddressLocating] = useState(false);
+  const [isAddressResolvingLocation, setIsAddressResolvingLocation] = useState(false);
+  const [addressFormError, setAddressFormError] = useState<string | null>(null);
+  const [signupAddressState, setSignupAddressState] = useState<SignupAddressState>({
+    houseNo: "",
+    apartment: "",
+    street: "",
+    city: "",
+    postcode: "",
+    instructions: "",
+    latitude: null,
+    longitude: null,
+    locationLabel: "",
+  });
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<StoredLocationPreference | null>(
     () => readStoredLocationPreference(),
@@ -68,9 +126,24 @@ const Header = () => {
   const [isLocating, setIsLocating] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, login, signup, requestSignupOtp, verifySignupOtp, logout } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!isLoginOpen || signupOtpResendIn <= 0) return;
+    const timer = window.setInterval(() => {
+      setSignupOtpResendIn((value) => (value > 0 ? value - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isLoginOpen, signupOtpResendIn]);
+
+  useEffect(() => {
+    if (!isLoginOpen || signupOtpExpiresIn <= 0) return;
+    const timer = window.setInterval(() => {
+      setSignupOtpExpiresIn((value) => (value > 0 ? value - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isLoginOpen, signupOtpExpiresIn]);
 
   const publicZonesQuery = useQuery({
     queryKey: ["public-delivery-zones"],
@@ -78,35 +151,21 @@ const Header = () => {
     refetchInterval: 30000,
   });
 
-  const supportUnreadQuery = useQuery({
-    queryKey: ["support-unread"],
-    queryFn: () => apiFetch<{ count: number }>("/support/unread-count"),
-    enabled: Boolean(user),
-    refetchInterval: 5000,
-  });
-
-  const supportThreadQuery = useQuery({
-    queryKey: ["support-thread"],
-    queryFn: () =>
-      apiFetch<{ thread: { id: string }; messages: SupportMessage[] }>("/support/thread"),
-    enabled: Boolean(user) && isSupportOpen,
-    refetchInterval: isSupportOpen ? 5000 : false,
-  });
-
-  const supportSendMutation = useMutation({
-    mutationFn: () =>
-      apiFetch("/support/messages", {
-        method: "POST",
-        body: JSON.stringify({ body: supportMessage }),
-      }),
+  const logoutMutation = useMutation({
+    mutationFn: () => logout(),
     onSuccess: () => {
-      setSupportMessage("");
-      supportThreadQuery.refetch();
+      setIsOpen(false);
+      toast({
+        title: "Logged out",
+        description: "You have been signed out.",
+      });
     },
-  });
-
-  const supportReadMutation = useMutation({
-    mutationFn: () => apiFetch("/support/read", { method: "POST" }),
+    onError: (error) => {
+      toast({
+        title: "Logout failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    },
   });
 
   const navLinks = [
@@ -118,11 +177,13 @@ const Header = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
-  const formatSupportTime = (value: string) =>
-    new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(value));
+  const customerDisplayName = user?.name?.trim() || user?.email?.split("@")[0] || "Customer";
+  const customerInitials = customerDisplayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 
   const locationOptions = publicZonesQuery.data ?? [];
   const mapLatitude = pickerDraft?.latitude ?? DEFAULT_MAP_LAT;
@@ -130,6 +191,12 @@ const Header = () => {
   const mapBboxDelta = 0.01;
   const locationMapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${mapLongitude - mapBboxDelta}%2C${mapLatitude - mapBboxDelta}%2C${mapLongitude + mapBboxDelta}%2C${mapLatitude + mapBboxDelta}&layer=mapnik&marker=${mapLatitude}%2C${mapLongitude}`;
   const locationMapViewUrl = `https://www.openstreetmap.org/?mlat=${mapLatitude}&mlon=${mapLongitude}#map=15/${mapLatitude}/${mapLongitude}`;
+  const signupMapLatitude =
+    signupAddressState.latitude ?? selectedLocation?.latitude ?? DEFAULT_MAP_LAT;
+  const signupMapLongitude =
+    signupAddressState.longitude ?? selectedLocation?.longitude ?? DEFAULT_MAP_LON;
+  const signupMapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${signupMapLongitude - mapBboxDelta}%2C${signupMapLatitude - mapBboxDelta}%2C${signupMapLongitude + mapBboxDelta}%2C${signupMapLatitude + mapBboxDelta}&layer=mapnik&marker=${signupMapLatitude}%2C${signupMapLongitude}`;
+  const signupMapViewUrl = `https://www.openstreetmap.org/?mlat=${signupMapLatitude}&mlon=${signupMapLongitude}#map=15/${signupMapLatitude}/${signupMapLongitude}`;
 
   const persistSelectedLocation = (value: StoredLocationPreference | null) => {
     setSelectedLocation(value);
@@ -168,6 +235,12 @@ const Header = () => {
   const resolveCurrentLocationInPicker = () => {
     if (!navigator.geolocation) {
       setLocationPickerError("Location is not supported in this browser.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setLocationPickerError(
+        "Location access needs a secure context (HTTPS or localhost).",
+      );
       return;
     }
 
@@ -216,8 +289,8 @@ const Header = () => {
           setIsLocating(false);
         }
       },
-      () => {
-        setLocationPickerError("Could not fetch your current location.");
+      (error) => {
+        setLocationPickerError(getGeolocationFailureMessage(error));
         setIsLocating(false);
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
@@ -250,6 +323,359 @@ const Header = () => {
       latitude: draft.latitude,
       longitude: draft.longitude,
     });
+  };
+
+  const resetSignupAddressState = () => {
+    setSignupAddressState({
+      houseNo: "",
+      apartment: "",
+      street: "",
+      city: "",
+      postcode: "",
+      instructions: "",
+      latitude: null,
+      longitude: null,
+      locationLabel: "",
+    });
+    setAddressFormError(null);
+    setIsAddressLocating(false);
+    setIsAddressResolvingLocation(false);
+    setIsAddressSubmitting(false);
+  };
+
+  const openAddressModalAfterOtp = () => {
+    setSignupAddressState({
+      houseNo: "",
+      apartment: "",
+      street: selectedLocation?.line1 ?? "",
+      city: selectedLocation?.city ?? "",
+      postcode: selectedLocation?.postcode ?? selectedLocation?.postcodePrefix ?? "",
+      instructions: "",
+      latitude: selectedLocation?.latitude ?? null,
+      longitude: selectedLocation?.longitude ?? null,
+      locationLabel: selectedLocation?.name ?? "",
+    });
+    setAddressFormError(null);
+    setIsAddressModalOpen(true);
+  };
+
+  const applyDetectedAddressToSignupForm = (payload: {
+    label: string;
+    line1?: string | null;
+    city?: string | null;
+    postcode?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  }) => {
+    const normalizedStreet = (payload.line1 ?? "")
+      .replace(/^\s*\d+[A-Za-z-]*\s+/, "")
+      .trim();
+    setSignupAddressState((prev) => ({
+      ...prev,
+      street: normalizedStreet || prev.street,
+      city: payload.city ?? prev.city,
+      postcode: payload.postcode ?? prev.postcode,
+      latitude: payload.latitude ?? prev.latitude,
+      longitude: payload.longitude ?? prev.longitude,
+      locationLabel: payload.label,
+    }));
+  };
+
+  const useSavedLocationForSignupAddress = () => {
+    if (!selectedLocation) {
+      setAddressFormError("No saved location found. Use current location first.");
+      return;
+    }
+    applyDetectedAddressToSignupForm({
+      label: selectedLocation.name,
+      line1: selectedLocation.line1,
+      city: selectedLocation.city,
+      postcode: selectedLocation.postcode ?? selectedLocation.postcodePrefix,
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+    });
+    setAddressFormError(null);
+  };
+
+  const resolveCurrentLocationForSignupAddress = () => {
+    if (!navigator.geolocation) {
+      setAddressFormError("Location is not supported in this browser.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setAddressFormError(
+        "Location access needs a secure context (HTTPS or localhost).",
+      );
+      return;
+    }
+    setAddressFormError(null);
+    setIsAddressLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = Number(position.coords.latitude.toFixed(6));
+        const longitude = Number(position.coords.longitude.toFixed(6));
+        setIsAddressResolvingLocation(true);
+        try {
+          const reverse = await apiFetch<ApiLocationReverseResponse>(
+            `/location/reverse?lat=${latitude}&lon=${longitude}`,
+          );
+          applyDetectedAddressToSignupForm({
+            label: reverse.displayName ?? "Current location",
+            line1: reverse.line1,
+            city: reverse.city,
+            postcode: reverse.postcode,
+            latitude: reverse.latitude,
+            longitude: reverse.longitude,
+          });
+          setAddressFormError(null);
+        } catch {
+          setSignupAddressState((prev) => ({
+            ...prev,
+            latitude,
+            longitude,
+            locationLabel: "Current location",
+          }));
+          setAddressFormError(
+            "Current location found, but address details are unavailable right now.",
+          );
+        } finally {
+          setIsAddressResolvingLocation(false);
+          setIsAddressLocating(false);
+        }
+      },
+      (error) => {
+        setAddressFormError(getGeolocationFailureMessage(error));
+        setIsAddressLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
+  const resetSignupOtpState = () => {
+    setSignupOtpCode("");
+    setIsSignupOtpRequested(false);
+    setIsDemoOtpMode(false);
+    setSignupOtpResendIn(0);
+    setSignupOtpExpiresIn(0);
+  };
+
+  const resetAuthModal = () => {
+    setAuthModalView("welcome");
+    setLoginEmail("");
+    setSignupState({ name: "", email: "", phone: "" });
+    resetSignupOtpState();
+    resetSignupAddressState();
+    setIsAuthSubmitting(false);
+  };
+
+  const openAuthModal = (view: AuthModalView = "welcome") => {
+    setAuthModalView(view);
+    setIsLoginOpen(true);
+  };
+
+  const handleCustomerLogin = async () => {
+    const email = loginEmail.trim();
+    if (!email) {
+      toast({
+        title: "Email required",
+        description: "Enter your email to continue.",
+      });
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+    try {
+      await login(email);
+      toast({
+        title: "Logged in",
+        description: "Welcome back.",
+      });
+      setIsLoginOpen(false);
+      resetAuthModal();
+    } catch (error) {
+      toast({
+        title: "Login failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleCustomerSignup = async () => {
+    const email = signupState.email.trim();
+    if (!email) {
+      toast({
+        title: "Email required",
+        description: "Enter your email to continue.",
+      });
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+    try {
+      const response = await requestSignupOtp(email);
+      setIsSignupOtpRequested(true);
+      setIsDemoOtpMode(false);
+      setSignupOtpResendIn(response.resendAfterSeconds);
+      setSignupOtpExpiresIn(response.expiresInSeconds);
+      setSignupOtpCode("");
+      toast({
+        title: "OTP sent",
+        description: "Check your email for the 6-digit verification code.",
+      });
+    } catch (error) {
+      const isOtpServiceUnavailable =
+        (error instanceof ApiError && error.status === 503) ||
+        (error instanceof Error && /otp email service is not configured/i.test(error.message));
+
+      if (isOtpServiceUnavailable) {
+        setIsSignupOtpRequested(true);
+        setIsDemoOtpMode(true);
+        setSignupOtpResendIn(0);
+        setSignupOtpExpiresIn(DEMO_OTP_EXPIRY_SECONDS);
+        setSignupOtpCode(DEMO_OTP_CODE);
+        toast({
+          title: "Demo OTP ready",
+          description:
+            "Email service is not connected yet. OTP has been auto-filled for demo preview.",
+        });
+        return;
+      }
+
+      toast({
+        variant: "destructive",
+        className: "w-[88vw] max-w-[320px] p-3 pr-7 sm:w-full sm:max-w-[360px] sm:p-4 sm:pr-8",
+        title: <span className="text-xs font-semibold sm:text-sm">Unable to send OTP</span>,
+        description: (
+          <span className="text-[11px] leading-4 sm:text-xs">
+            {error instanceof Error ? error.message : "Please try again."}
+          </span>
+        ),
+      });
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleVerifySignupOtp = async () => {
+    const email = signupState.email.trim();
+    if (!email) {
+      toast({
+        title: "Email required",
+        description: "Enter your email to continue.",
+      });
+      return;
+    }
+
+    if (isDemoOtpMode) {
+      if (signupOtpCode !== DEMO_OTP_CODE) {
+        toast({
+          title: "Enter valid OTP",
+          description: "Use the auto-filled demo OTP code to continue.",
+        });
+        return;
+      }
+
+      setIsAuthSubmitting(true);
+      try {
+        setIsLoginOpen(false);
+        openAddressModalAfterOtp();
+        toast({
+          title: "OTP verified",
+          description: "Now add your address to complete signup.",
+        });
+      } finally {
+        setIsAuthSubmitting(false);
+      }
+      return;
+    }
+
+    if (!/^\d{6}$/.test(signupOtpCode)) {
+      toast({
+        title: "Enter valid OTP",
+        description: "Use the 6-digit code sent to your email.",
+      });
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+    try {
+      await verifySignupOtp({
+        email,
+        code: signupOtpCode,
+        name: signupState.name.trim() || undefined,
+        phone: signupState.phone.trim() || undefined,
+      });
+      toast({
+        title: "OTP verified",
+        description: "Now add your address to complete signup.",
+      });
+      setIsLoginOpen(false);
+      openAddressModalAfterOtp();
+    } catch (error) {
+      toast({
+        title: "OTP verification failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleCompleteSignupWithAddress = async () => {
+    const email = signupState.email.trim();
+    const houseNo = signupAddressState.houseNo.trim();
+    const street = signupAddressState.street.trim();
+    const city = signupAddressState.city.trim();
+    const postcode = signupAddressState.postcode.trim();
+
+    if (!email) {
+      toast({
+        variant: "destructive",
+        title: "Email required",
+        description: "Please restart signup and enter your email.",
+      });
+      return;
+    }
+
+    if (!houseNo || !street || !city || !postcode) {
+      setAddressFormError("House number, street, city, and postcode are required.");
+      return;
+    }
+
+    const line1 = street.toLowerCase().startsWith(houseNo.toLowerCase())
+      ? street
+      : `${houseNo} ${street}`;
+
+    setAddressFormError(null);
+    setIsAddressSubmitting(true);
+    try {
+      await signup({
+        email,
+        name: signupState.name.trim(),
+        phone: signupState.phone.trim(),
+        addressLine1: line1.trim(),
+        addressLine2: signupAddressState.apartment.trim() || undefined,
+        addressCity: city,
+        addressPostcode: postcode,
+        addressInstructions: signupAddressState.instructions.trim() || undefined,
+      });
+      setIsAddressModalOpen(false);
+      toast({
+        title: "Signup complete",
+        description: "Account created with your address details.",
+      });
+      resetAuthModal();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Signup failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsAddressSubmitting(false);
+    }
   };
 
   return (
@@ -303,33 +729,35 @@ const Header = () => {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-4">
-            <div className="relative">
-              <Button
-                variant="outline"
-                className="rounded-md px-4"
-                onClick={() => {
-                  if (!user) {
-                    setIsLoginOpen(true);
-                    return;
-                  }
-                  setIsSupportOpen(true);
-                }}
-              >
-                <MessageSquare className="w-4 h-4" />
-                Support
-              </Button>
-              {supportUnreadQuery.data?.count ? (
-                <span className="absolute -top-2 -right-2 h-5 min-w-[1.25rem] rounded-sm bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center px-1">
-                  {supportUnreadQuery.data.count}
-                </span>
-              ) : null}
-            </div>
             {user ? (
-              <Link to="/account">
-                <Button className="btn-order">Profile</Button>
-              </Link>
+              <>
+                <Link to="/account">
+                  <div className="flex items-center gap-3 rounded-full border border-border bg-background px-2 py-1.5 pr-3 transition-colors hover:border-primary/50">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                      {customerInitials || "C"}
+                    </span>
+                    <div className="hidden lg:block leading-tight">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                        Burger Guys
+                      </p>
+                      <p className="max-w-[140px] truncate text-sm font-semibold text-foreground">
+                        {customerDisplayName}
+                      </p>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </Link>
+                <Button
+                  variant="outline"
+                  className="rounded-md px-4"
+                  onClick={() => logoutMutation.mutate()}
+                  disabled={logoutMutation.isPending}
+                >
+                  {logoutMutation.isPending ? "Logging out..." : "Logout"}
+                </Button>
+              </>
             ) : (
-              <Button className="btn-order" onClick={() => setIsLoginOpen(true)}>
+              <Button className="btn-order" onClick={() => openAuthModal("welcome")}>
                 Login
               </Button>
             )}
@@ -362,38 +790,41 @@ const Header = () => {
                   {link.name}
                 </Link>
               ))}
-              <div className="relative w-full">
-                <Button
-                  variant="outline"
-                  className="w-full rounded-md flex items-center justify-center gap-2"
-                  onClick={() => {
-                    setIsOpen(false);
-                    if (!user) {
-                      setIsLoginOpen(true);
-                      return;
-                    }
-                    setIsSupportOpen(true);
-                  }}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Support
-                </Button>
-                {supportUnreadQuery.data?.count ? (
-                  <span className="absolute -top-2 -right-2 h-5 min-w-[1.25rem] rounded-sm bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center px-1">
-                    {supportUnreadQuery.data.count}
-                  </span>
-                ) : null}
-              </div>
               {user ? (
-                <Link to="/account" onClick={() => setIsOpen(false)}>
-                  <Button className="btn-order w-full">Profile</Button>
-                </Link>
+                <>
+                  <Link to="/account" onClick={() => setIsOpen(false)}>
+                    <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                          {customerInitials || "C"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                            Burger Guys
+                          </p>
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {customerDisplayName}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </div>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-md"
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                  >
+                    {logoutMutation.isPending ? "Logging out..." : "Logout"}
+                  </Button>
+                </>
               ) : (
                 <Button
                   className="btn-order w-full"
                   onClick={() => {
                     setIsOpen(false);
-                    setIsLoginOpen(true);
+                    openAuthModal("welcome");
                   }}
                 >
                   Login
@@ -526,147 +957,393 @@ const Header = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
+      <Dialog
+        open={isLoginOpen}
+        onOpenChange={(open) => {
+          setIsLoginOpen(open);
+          if (!open) {
+            resetAuthModal();
+          }
+        }}
+      >
         <DialogContent className="w-[92vw] max-w-[620px] rounded-3xl border border-border bg-card p-0 shadow-[var(--shadow-card)]">
-          <div className="rounded-3xl bg-card px-6 py-7 sm:px-8 sm:py-8">
-            <div className="space-y-1">
-              <h2 className="font-display text-5xl text-foreground">Welcome!</h2>
-              <p className="text-[32px] text-muted-foreground">Sign up or log in to continue</p>
-            </div>
+          {authModalView === "welcome" ? (
+            <div className="rounded-3xl bg-card px-6 py-7 sm:px-8 sm:py-8">
+              <div className="space-y-1">
+                <h2 className="font-display text-5xl text-foreground">Welcome!</h2>
+                <p className="text-lg text-muted-foreground sm:text-xl">
+                  Sign up or log in to continue
+                </p>
+              </div>
 
-            <button
-              type="button"
-              className="mt-8 flex h-14 w-full items-center justify-center gap-4 rounded-full border border-border bg-background text-lg font-semibold text-foreground transition-colors hover:border-primary/50"
-              onClick={() =>
-                toast({
-                  title: "Google login coming soon",
-                  description: "For now, use Login or Signup below.",
-                })
-              }
-            >
-              <span className="text-3xl font-bold leading-none text-primary">G</span>
-              Continue with Google
-            </button>
-
-            <div className="my-7 flex items-center gap-3 text-muted-foreground">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-lg">or</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            <div className="space-y-4">
-              <Button
-                className="h-14 w-full rounded-full bg-[#53c72c] text-xl font-semibold text-black hover:bg-[#47b523]"
-                onClick={() => {
-                  setIsLoginOpen(false);
-                  navigate("/account");
-                }}
+              <button
+                type="button"
+                className="mt-8 flex h-14 w-full items-center justify-center gap-4 rounded-full border border-border bg-background text-lg font-semibold text-foreground transition-colors hover:border-primary/50"
+                onClick={() =>
+                  toast({
+                    title: "Google login coming soon",
+                    description: "For now, use Login or Signup below.",
+                  })
+                }
               >
-                Login
-              </Button>
+                <span className="text-3xl font-bold leading-none text-primary">G</span>
+                Continue with Google
+              </button>
 
-              <Button
-                variant="outline"
-                className="h-14 w-full rounded-full border-2 border-brand-black/70 text-xl font-semibold text-foreground hover:bg-muted/30"
-                onClick={() => {
-                  setIsLoginOpen(false);
-                  navigate("/account");
-                }}
-              >
-                Signup
-              </Button>
+              <div className="my-7 flex items-center gap-3 text-muted-foreground">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-lg">or</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="space-y-4">
+                <Button
+                  className="h-14 w-full rounded-full bg-brand-orange text-lg font-semibold text-brand-white hover:bg-brand-orange/90"
+                  onClick={() => setAuthModalView("login")}
+                >
+                  Login
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="h-14 w-full rounded-full border-2 border-brand-black/70 text-lg font-semibold text-foreground hover:bg-muted/30"
+                  onClick={() => {
+                    resetSignupOtpState();
+                    setAuthModalView("signup");
+                  }}
+                >
+                  Signup
+                </Button>
+              </div>
+
+              <p className="mt-8 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                By signing up, you agree to our{" "}
+                <span className="font-semibold text-foreground">Terms and Conditions</span> and{" "}
+                <span className="font-semibold text-foreground">Privacy Policy.</span>
+              </p>
             </div>
+          ) : null}
 
-            <p className="mt-8 text-sm leading-relaxed text-muted-foreground sm:text-base">
-              By signing up, you agree to our{" "}
-              <span className="font-semibold text-foreground">Terms and Conditions</span> and{" "}
-              <span className="font-semibold text-foreground">Privacy Policy.</span>
-            </p>
-          </div>
+          {authModalView === "login" ? (
+            <div className="rounded-3xl bg-card px-6 py-7 sm:px-8 sm:py-8">
+              <div className="space-y-1">
+                <h2 className="font-display text-4xl text-foreground">Login</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter your email to sign in instantly.
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <Input
+                  type="email"
+                  placeholder="Email address"
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                />
+                <Button
+                  className="h-12 w-full rounded-full bg-brand-orange text-base font-semibold text-brand-white hover:bg-brand-orange/90"
+                  onClick={() => void handleCustomerLogin()}
+                  disabled={isAuthSubmitting}
+                >
+                  {isAuthSubmitting ? "Signing in..." : "Continue"}
+                </Button>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  className="font-semibold text-foreground/70 hover:text-foreground"
+                  onClick={() => {
+                    resetSignupOtpState();
+                    setAuthModalView("welcome");
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="font-semibold text-brand-orange hover:opacity-80"
+                  onClick={() => {
+                    resetSignupOtpState();
+                    setAuthModalView("signup");
+                  }}
+                >
+                  Need an account? Signup
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {authModalView === "signup" ? (
+            <div className="rounded-3xl bg-card px-6 py-7 sm:px-8 sm:py-8">
+              <div className="space-y-1">
+                <h2 className="font-display text-4xl text-foreground">Signup</h2>
+                <p className="text-sm text-muted-foreground">
+                  Create your account with email and verify with OTP.
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <Input
+                  placeholder="Full name (optional)"
+                  value={signupState.name}
+                  onChange={(event) =>
+                    setSignupState((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                />
+                <Input
+                  type="email"
+                  placeholder="Email address"
+                  value={signupState.email}
+                  onChange={(event) =>
+                    setSignupState((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                />
+                <Input
+                  placeholder="Phone number (optional)"
+                  value={signupState.phone}
+                  onChange={(event) =>
+                    setSignupState((prev) => ({ ...prev, phone: event.target.value }))
+                  }
+                />
+
+                {!isSignupOtpRequested ? (
+                  <Button
+                    className="h-12 w-full rounded-full bg-brand-orange text-base font-semibold text-brand-white hover:bg-brand-orange/90"
+                    onClick={() => void handleCustomerSignup()}
+                    disabled={isAuthSubmitting}
+                  >
+                    {isAuthSubmitting ? "Sending OTP..." : "Send OTP"}
+                  </Button>
+                ) : (
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      {isDemoOtpMode ? (
+                        <>
+                          Demo mode is active. OTP is auto-filled for{" "}
+                          <span className="font-semibold text-foreground">{signupState.email.trim()}</span>
+                          .
+                        </>
+                      ) : (
+                        <>
+                          Enter the 6-digit code sent to{" "}
+                          <span className="font-semibold text-foreground">{signupState.email.trim()}</span>
+                        </>
+                      )}
+                    </p>
+                    <div className="mb-3 flex justify-center">
+                      <InputOTP
+                        value={signupOtpCode}
+                        onChange={(value) => setSignupOtpCode(value.replace(/\D/g, "").slice(0, 6))}
+                        maxLength={6}
+                        containerClassName="justify-center gap-1"
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        className="h-11 flex-1 rounded-full bg-brand-orange text-sm font-semibold text-brand-white hover:bg-brand-orange/90"
+                        onClick={() => void handleVerifySignupOtp()}
+                        disabled={isAuthSubmitting || signupOtpCode.length !== 6}
+                      >
+                        {isAuthSubmitting ? "Verifying..." : "Verify and create account"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 rounded-full px-4 text-sm"
+                        onClick={() => void handleCustomerSignup()}
+                        disabled={isAuthSubmitting || signupOtpResendIn > 0}
+                      >
+                        {signupOtpResendIn > 0 ? `Resend in ${signupOtpResendIn}s` : "Resend OTP"}
+                      </Button>
+                    </div>
+
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {isDemoOtpMode
+                        ? "Demo OTP is for UI preview only."
+                        : `Code expires in ${signupOtpExpiresIn}s.`}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  className="font-semibold text-foreground/70 hover:text-foreground"
+                  onClick={() => {
+                    resetSignupOtpState();
+                    setAuthModalView("welcome");
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="font-semibold text-brand-orange hover:opacity-80"
+                  onClick={() => {
+                    resetSignupOtpState();
+                    setAuthModalView("login");
+                  }}
+                >
+                  Already have account? Login
+                </button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
       <Dialog
-        open={isSupportOpen}
+        open={isAddressModalOpen}
         onOpenChange={(open) => {
-          setIsSupportOpen(open);
-          if (open) {
-            supportReadMutation.mutate();
+          if (!isAddressSubmitting) {
+            setIsAddressModalOpen(open);
           }
         }}
       >
-        <DialogContent className="flex h-[82vh] max-h-[90vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-[18px] border border-border bg-card p-0 text-left shadow-[var(--shadow-card)] sm:h-[72vh]">
-          <div className="flex h-full min-h-0 flex-1 flex-col">
-            <div className="flex items-start justify-between gap-4 border-b border-border bg-muted/20 px-5 py-4 sm:px-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Customer Support</h2>
-                <p className="text-xs text-muted-foreground">
-                  Send us a message and we will reply shortly.
-                </p>
+        <DialogContent className="w-[94vw] max-w-2xl rounded-[18px] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <div className="space-y-4">
+            <div>
+              <h2 className="font-display text-2xl text-foreground">Add your address</h2>
+              <p className="text-sm text-muted-foreground">
+                OTP confirmed. Choose location on map and add house/apartment details.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border bg-background">
+              <iframe
+                title="Signup address map"
+                src={signupMapEmbedUrl}
+                className="h-52 w-full"
+                loading="lazy"
+              />
+              <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                <span>{signupAddressState.locationLabel || "Map preview"}</span>
+                <a
+                  href={signupMapViewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Open full map
+                </a>
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 px-4 py-4 sm:px-6">
-              <div className="h-full w-full rounded-[14px] border border-border bg-muted/20">
-                <ScrollArea className="h-full w-full px-3 py-3 sm:px-4">
-                  <div className="space-y-3">
-                  {supportThreadQuery.isLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading messages...</p>
-                  ) : supportThreadQuery.data?.messages?.length ? (
-                    supportThreadQuery.data.messages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={[
-                          "flex",
-                          message.sender === "CUSTOMER" ? "justify-end" : "justify-start",
-                        ].join(" ")}
-                      >
-                        <div
-                          className={[
-                            "min-w-[140px] max-w-[88%] rounded-[10px] border px-3 py-2 text-sm leading-relaxed shadow-sm",
-                            message.sender === "CUSTOMER"
-                              ? "border-primary/50 bg-primary/10 text-foreground"
-                              : "border-border bg-background text-foreground",
-                          ].join(" ")}
-                        >
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            {message.sender === "CUSTOMER" ? "You" : "Support"} ·{" "}
-                            {formatSupportTime(message.createdAt)}
-                          </p>
-                          {message.body}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No messages yet.</p>
-                  )}
-                  </div>
-                </ScrollArea>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={resolveCurrentLocationForSignupAddress}
+                disabled={isAddressLocating || isAddressResolvingLocation || isAddressSubmitting}
+              >
+                <Navigation className="h-4 w-4" />
+                {isAddressLocating
+                  ? "Locating..."
+                  : isAddressResolvingLocation
+                    ? "Resolving..."
+                    : "Use current location"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={useSavedLocationForSignupAddress}
+                disabled={!selectedLocation || isAddressSubmitting}
+              >
+                Use selected location
+              </Button>
             </div>
 
-            <div className="border-t border-border bg-muted/20 px-4 py-4 sm:px-6">
-              <div className="rounded-[12px] border border-border bg-background p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <Input
-                    placeholder="Type your message..."
-                    value={supportMessage}
-                    onChange={(event) => setSupportMessage(event.target.value)}
-                    className="h-11 w-full flex-1 rounded-[10px]"
-                  />
-                  <Button
-                    className="h-11 w-full rounded-[10px] px-6 sm:w-auto"
-                    onClick={() => supportSendMutation.mutate()}
-                    disabled={!supportMessage.trim() || supportSendMutation.isPending}
-                  >
-                    {supportSendMutation.isPending ? "Sending..." : "Send"}
-                  </Button>
-                </div>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="House no *"
+                value={signupAddressState.houseNo}
+                onChange={(event) =>
+                  setSignupAddressState((prev) => ({ ...prev, houseNo: event.target.value }))
+                }
+              />
+              <Input
+                placeholder="Apartment / Flat (optional)"
+                value={signupAddressState.apartment}
+                onChange={(event) =>
+                  setSignupAddressState((prev) => ({ ...prev, apartment: event.target.value }))
+                }
+              />
+            </div>
+            <Input
+              placeholder="Street / Area *"
+              value={signupAddressState.street}
+              onChange={(event) =>
+                setSignupAddressState((prev) => ({ ...prev, street: event.target.value }))
+              }
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="City *"
+                value={signupAddressState.city}
+                onChange={(event) =>
+                  setSignupAddressState((prev) => ({ ...prev, city: event.target.value }))
+                }
+              />
+              <Input
+                placeholder="Postcode *"
+                value={signupAddressState.postcode}
+                onChange={(event) =>
+                  setSignupAddressState((prev) => ({ ...prev, postcode: event.target.value }))
+                }
+              />
+            </div>
+            <Input
+              placeholder="Delivery instructions (optional)"
+              value={signupAddressState.instructions}
+              onChange={(event) =>
+                setSignupAddressState((prev) => ({
+                  ...prev,
+                  instructions: event.target.value,
+                }))
+              }
+            />
+
+            {addressFormError ? (
+              <p className="text-xs font-semibold text-destructive">{addressFormError}</p>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => setIsAddressModalOpen(false)}
+                disabled={isAddressSubmitting}
+              >
+                Later
+              </Button>
+              <Button
+                type="button"
+                className="btn-order rounded-full"
+                onClick={() => void handleCompleteSignupWithAddress()}
+                disabled={isAddressSubmitting}
+              >
+                {isAddressSubmitting ? "Saving..." : "Complete signup"}
+              </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
     </header>
   );
 };

@@ -9,6 +9,8 @@ import { OrdersService } from "../orders/orders.service";
 import { CustomerLoginDto } from "./dto/customer-login.dto";
 import { CustomerSignupDto } from "./dto/customer-signup.dto";
 import { ListUserOrdersQueryDto } from "../orders/dto/list-user-orders-query.dto";
+import { RequestSignupOtpDto } from "./dto/request-signup-otp.dto";
+import { VerifySignupOtpDto } from "./dto/verify-signup-otp.dto";
 
 @Controller("auth")
 export class CustomerAuthController {
@@ -20,6 +22,18 @@ export class CustomerAuthController {
   @Post("signup")
   async signup(@Body() body: CustomerSignupDto, @Res({ passthrough: true }) res: Response) {
     const { token, user } = await this.customerAuthService.signup(body);
+    this.setAuthCookie(res, token);
+    return { user };
+  }
+
+  @Post("signup/request-otp")
+  requestSignupOtp(@Body() body: RequestSignupOtpDto) {
+    return this.customerAuthService.requestSignupOtp(body.email);
+  }
+
+  @Post("signup/verify-otp")
+  async verifySignupOtp(@Body() body: VerifySignupOtpDto, @Res({ passthrough: true }) res: Response) {
+    const { token, user } = await this.customerAuthService.verifySignupOtp(body);
     this.setAuthCookie(res, token);
     return { user };
   }

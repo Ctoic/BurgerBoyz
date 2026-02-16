@@ -42,6 +42,10 @@ enum SupportSender {
   ADMIN
 }
 
+enum EmailOtpPurpose {
+  CUSTOMER_SIGNUP
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -56,6 +60,7 @@ model User {
   addressInstructions String?
   orders       Order[]
   supportThread SupportThread?
+  emailOtps     EmailOtp[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -234,4 +239,23 @@ model SupportMessage {
   sender    SupportSender
   body      String
   createdAt DateTime      @default(now())
+}
+
+model EmailOtp {
+  id                String          @id @default(uuid())
+  email             String
+  userId            String?
+  user              User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  purpose           EmailOtpPurpose
+  codeHash          String
+  expiresAt         DateTime
+  resendAvailableAt DateTime
+  attempts          Int             @default(0)
+  maxAttempts       Int             @default(5)
+  usedAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([email, purpose, createdAt(sort: Desc)])
+  @@index([email, purpose, usedAt, expiresAt])
 }
