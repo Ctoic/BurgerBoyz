@@ -1,6 +1,10 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min } from "class-validator";
 
 export class CreateAddOnDto {
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
   @IsString()
   name!: string;
 

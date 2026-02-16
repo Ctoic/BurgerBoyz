@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "@/lib/api";
-import type { ApiOrder, ApiOrderType } from "@/lib/types";
+import { ApiError, apiFetch } from "@/lib/api";
+import type { ApiMenuCategory, ApiOrder, ApiOrderType } from "@/lib/types";
 
 interface CartAddOn {
   id: string;
@@ -192,6 +192,47 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setOrderState(nextOrder);
   };
 
+  const syncCartWithCurrentMenu = async () => {
+    const menu = await apiFetch<ApiMenuCategory[]>("/menu");
+    const allowedAddOnIdsByMenuItem = new Map<string, Set<string>>();
+
+    menu.forEach((category) => {
+      category.items.forEach((menuItem) => {
+        allowedAddOnIdsByMenuItem.set(
+          menuItem.id,
+          new Set(menuItem.addOns.map((addOn) => addOn.id)),
+        );
+      });
+    });
+
+    let changed = false;
+    const nextItems: CartItem[] = [];
+
+    items.forEach((item) => {
+      const allowedAddOnIds = allowedAddOnIdsByMenuItem.get(item.menuItemId);
+      if (!allowedAddOnIds) {
+        changed = true;
+        return;
+      }
+
+      const nextAddOns = item.addOns.filter((addOn) => allowedAddOnIds.has(addOn.id));
+      if (nextAddOns.length !== item.addOns.length) {
+        changed = true;
+      }
+
+      nextItems.push({
+        ...item,
+        addOns: nextAddOns,
+      });
+    });
+
+    if (changed) {
+      setItems(nextItems);
+    }
+
+    return changed;
+  };
+
   const placeOrder = async (payload: PlaceOrderPayload) => {
     if (items.length === 0) return null;
 
@@ -212,10 +253,27 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       })),
     };
 
-    const createdOrder = await apiFetch<OrderState>("/orders", {
-      method: "POST",
-      body: JSON.stringify(orderPayload),
-    });
+    let createdOrder: OrderState;
+    try {
+      createdOrder = await apiFetch<OrderState>("/orders", {
+        method: "POST",
+        body: JSON.stringify(orderPayload),
+      });
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 400 &&
+        /menu items are invalid|add-ons are invalid/i.test(error.message)
+      ) {
+        const cartWasUpdated = await syncCartWithCurrentMenu();
+        throw new Error(
+          cartWasUpdated
+            ? "Some items in your cart are no longer available. Your cart was updated, please review and place order again."
+            : "Some cart items are no longer valid. Please review your cart and try again.",
+        );
+      }
+      throw error;
+    }
 
     setOrderState(createdOrder);
     setItems([]);

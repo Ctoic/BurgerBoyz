@@ -24,6 +24,11 @@ export interface ApiAddOn {
   name: string;
   priceCents: number;
   isActive?: boolean;
+  categoryId?: string | null;
+  category?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export interface ApiMenuItem {
@@ -66,6 +71,7 @@ export interface ApiMenuCategory {
   id: string;
   name: string;
   position?: number;
+  isActive?: boolean;
   items: ApiMenuItem[];
 }
 
