@@ -10,6 +10,9 @@ import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateDealDto } from "./dto/create-deal.dto";
 import { CreateMenuItemDto } from "./dto/create-menu-item.dto";
 import { ListPublicDealsQueryDto } from "./dto/list-public-deals-query.dto";
+import { UpdateAddOnDto } from "./dto/update-add-on.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
+import { UpdateDealDto } from "./dto/update-deal.dto";
 import { UpdateMenuItemDto } from "./dto/update-menu-item.dto";
 
 export interface ResolvedDealItem {
@@ -57,30 +60,131 @@ export class MenuService {
     },
   };
 
+  private async ensureCategoryExists(categoryId: string) {
+    const category = await this.prisma.menuCategory.findUnique({
+      where: { id: categoryId },
+      select: { id: true },
+    });
+    if (!category) {
+      throw new NotFoundException("Category not found.");
+    }
+  }
+
+  private async normalizeDealBundleItems(
+    bundleItems: { menuItemId: string; quantity: number }[],
+  ) {
+    const quantityByMenuItemId = new Map<string, number>();
+    for (const bundleItem of bundleItems) {
+      const menuItemId = bundleItem.menuItemId.trim();
+      if (!menuItemId) {
+        continue;
+      }
+      quantityByMenuItemId.set(
+        menuItemId,
+        (quantityByMenuItemId.get(menuItemId) ?? 0) + bundleItem.quantity,
+      );
+    }
+
+    const normalizedBundleItems = [...quantityByMenuItemId.entries()].map(
+      ([menuItemId, quantity]) => ({ menuItemId, quantity }),
+    );
+    if (normalizedBundleItems.length === 0) {
+      throw new BadRequestException("At least one bundle item is required.");
+    }
+
+    const normalizedItemIds = normalizedBundleItems.map((item) => item.menuItemId);
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: { id: { in: normalizedItemIds }, isActive: true },
+      select: { id: true },
+    });
+    if (menuItems.length !== normalizedItemIds.length) {
+      throw new BadRequestException("One or more bundle items are invalid.");
+    }
+
+    return normalizedBundleItems;
+  }
+
   async getPublicMenu() {
-    const categories = await this.prisma.menuCategory.findMany({
-      where: { isActive: true },
-      orderBy: { position: "asc" },
-      include: {
-        items: {
-          where: { isActive: true },
-          orderBy: { name: "asc" },
-          include: {
-            addOns: {
-              include: { addOn: true },
+    const [categories, globalAddOns] = await Promise.all([
+      this.prisma.menuCategory.findMany({
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+        include: {
+          addOns: {
+            where: { isActive: true },
+            include: {
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+            orderBy: { name: "asc" },
+          },
+          items: {
+            where: { isActive: true },
+            orderBy: { name: "asc" },
+            include: {
+              addOns: {
+                include: {
+                  addOn: {
+                    include: {
+                      category: {
+                        select: {
+                          id: true,
+                          name: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.addOn.findMany({
+        where: { isActive: true, categoryId: null },
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+      }),
+    ]);
 
-    return categories.map((category) => ({
-      ...category,
-      items: category.items.map((item) => ({
-        ...item,
-        addOns: item.addOns.map((link) => link.addOn),
-      })),
-    }));
+    return categories.map((category) => {
+      const { addOns: categoryAddOns, ...categoryBase } = category;
+
+      return {
+        ...categoryBase,
+        items: category.items.map((item) => {
+          const linkedAddOns = item.addOns
+            .map((link) => link.addOn)
+            .filter(
+              (addOn) => addOn.isActive && (!addOn.categoryId || addOn.categoryId === item.categoryId),
+            );
+
+          const candidateAddOns = linkedAddOns.length
+            ? linkedAddOns
+            : [...categoryAddOns, ...globalAddOns];
+
+          const dedupedAddOns = Array.from(
+            new Map(candidateAddOns.map((addOn) => [addOn.id, addOn])).values(),
+          );
+
+          return {
+            ...item,
+            addOns: dedupedAddOns,
+          };
+        }),
+      };
+    });
   }
 
   async getAdminMenu() {
@@ -91,14 +195,35 @@ export class MenuService {
           orderBy: { name: "asc" },
           include: {
             addOns: {
-              include: { addOn: true },
+              include: {
+                addOn: {
+                  include: {
+                    category: {
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
       },
     });
 
-    const addOns = await this.prisma.addOn.findMany({ orderBy: { name: "asc" } });
+    const addOns = await this.prisma.addOn.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
 
     const deals = await this.getAdminDeals();
 
@@ -125,9 +250,60 @@ export class MenuService {
     });
   }
 
+  async updateCategory(id: string, dto: UpdateCategoryDto) {
+    const category = await this.prisma.menuCategory.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!category) {
+      throw new NotFoundException("Category not found.");
+    }
+
+    return this.prisma.menuCategory.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        position: dto.position,
+        isActive: dto.isActive,
+      },
+    });
+  }
+
+  async deleteCategory(id: string) {
+    const category = await this.prisma.menuCategory.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            items: true,
+            addOns: true,
+          },
+        },
+      },
+    });
+    if (!category) {
+      throw new NotFoundException("Category not found.");
+    }
+
+    if (category._count.items > 0 || category._count.addOns > 0) {
+      throw new BadRequestException(
+        "Cannot delete category with linked items or add-ons. Update or delete them first.",
+      );
+    }
+
+    await this.prisma.menuCategory.delete({ where: { id } });
+    return { ok: true };
+  }
+
   async createAddOn(dto: CreateAddOnDto) {
+    if (dto.categoryId) {
+      await this.ensureCategoryExists(dto.categoryId);
+    }
+
     return this.prisma.addOn.create({
       data: {
+        categoryId: dto.categoryId ?? null,
         name: dto.name,
         priceCents: dto.priceCents,
         isActive: dto.isActive ?? true,
@@ -135,7 +311,62 @@ export class MenuService {
     });
   }
 
+  async updateAddOn(id: string, dto: UpdateAddOnDto) {
+    const addOn = await this.prisma.addOn.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!addOn) {
+      throw new NotFoundException("Add-on not found.");
+    }
+
+    if (dto.categoryId !== undefined && dto.categoryId !== null) {
+      await this.ensureCategoryExists(dto.categoryId);
+    }
+
+    return this.prisma.addOn.update({
+      where: { id },
+      data: {
+        categoryId: dto.categoryId,
+        name: dto.name,
+        priceCents: dto.priceCents,
+        isActive: dto.isActive,
+      },
+      include: {
+        category: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+  }
+
+  async deleteAddOn(id: string) {
+    const deleted = await this.prisma.addOn.deleteMany({ where: { id } });
+    if (deleted.count === 0) {
+      throw new NotFoundException("Add-on not found.");
+    }
+    return { ok: true };
+  }
+
   async createMenuItem(dto: CreateMenuItemDto) {
+    if (dto.addOnIds?.length) {
+      const addOns = await this.prisma.addOn.findMany({
+        where: { id: { in: dto.addOnIds } },
+        select: { id: true, categoryId: true },
+      });
+      if (addOns.length !== dto.addOnIds.length) {
+        throw new BadRequestException("One or more add-ons are invalid.");
+      }
+      const hasMismatchedCategoryAddOn = addOns.some(
+        (addOn) => addOn.categoryId && addOn.categoryId !== dto.categoryId,
+      );
+      if (hasMismatchedCategoryAddOn) {
+        throw new BadRequestException(
+          "One or more add-ons do not belong to the selected category.",
+        );
+      }
+    }
+
     return this.prisma.menuItem.create({
       data: {
         categoryId: dto.categoryId,
@@ -155,6 +386,34 @@ export class MenuService {
   }
 
   async updateMenuItem(id: string, dto: UpdateMenuItemDto) {
+    if (dto.addOnIds) {
+      const currentItem = await this.prisma.menuItem.findUnique({
+        where: { id },
+        select: { categoryId: true },
+      });
+      if (!currentItem) {
+        throw new NotFoundException("Menu item not found.");
+      }
+      const targetCategoryId = dto.categoryId ?? currentItem.categoryId;
+      if (dto.addOnIds.length) {
+        const addOns = await this.prisma.addOn.findMany({
+          where: { id: { in: dto.addOnIds } },
+          select: { id: true, categoryId: true },
+        });
+        if (addOns.length !== dto.addOnIds.length) {
+          throw new BadRequestException("One or more add-ons are invalid.");
+        }
+        const hasMismatchedCategoryAddOn = addOns.some(
+          (addOn) => addOn.categoryId && addOn.categoryId !== targetCategoryId,
+        );
+        if (hasMismatchedCategoryAddOn) {
+          throw new BadRequestException(
+            "One or more add-ons do not belong to the selected category.",
+          );
+        }
+      }
+    }
+
     const item = await this.prisma.menuItem.update({
       where: { id },
       data: {
@@ -189,33 +448,7 @@ export class MenuService {
   }
 
   async createDeal(dto: CreateDealDto): Promise<ResolvedDeal> {
-    const quantityByMenuItemId = new Map<string, number>();
-    for (const bundleItem of dto.bundleItems) {
-      const menuItemId = bundleItem.menuItemId.trim();
-      if (!menuItemId) {
-        continue;
-      }
-      quantityByMenuItemId.set(
-        menuItemId,
-        (quantityByMenuItemId.get(menuItemId) ?? 0) + bundleItem.quantity,
-      );
-    }
-
-    const normalizedBundleItems = [...quantityByMenuItemId.entries()].map(
-      ([menuItemId, quantity]) => ({ menuItemId, quantity }),
-    );
-    if (normalizedBundleItems.length === 0) {
-      throw new BadRequestException("At least one bundle item is required.");
-    }
-
-    const normalizedItemIds = normalizedBundleItems.map((item) => item.menuItemId);
-    const menuItems = await this.prisma.menuItem.findMany({
-      where: { id: { in: normalizedItemIds }, isActive: true },
-      select: { id: true },
-    });
-    if (menuItems.length !== normalizedItemIds.length) {
-      throw new BadRequestException("One or more bundle items are invalid.");
-    }
+    const normalizedBundleItems = await this.normalizeDealBundleItems(dto.bundleItems);
 
     const createdDeal = await this.prisma.deal.create({
       data: {
@@ -237,6 +470,45 @@ export class MenuService {
     });
 
     return this.resolveDeal(createdDeal);
+  }
+
+  async updateDeal(id: string, dto: UpdateDealDto): Promise<ResolvedDeal> {
+    const existingDeal = await this.prisma.deal.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existingDeal) {
+      throw new NotFoundException("Deal not found.");
+    }
+
+    const normalizedBundleItems = dto.bundleItems
+      ? await this.normalizeDealBundleItems(dto.bundleItems)
+      : null;
+
+    const updatedDeal = await this.prisma.deal.update({
+      where: { id },
+      data: {
+        name: dto.name === undefined ? undefined : dto.name.trim(),
+        description: dto.description === undefined ? undefined : dto.description.trim(),
+        tag: dto.tag === undefined ? undefined : dto.tag.trim() || "Deal",
+        imageUrl: dto.imageUrl === undefined ? undefined : dto.imageUrl.trim() || null,
+        discountCents: dto.discountCents,
+        isActive: dto.isActive,
+        bundleItems: normalizedBundleItems
+          ? {
+              deleteMany: {},
+              create: normalizedBundleItems.map((item, index) => ({
+                menuItemId: item.menuItemId,
+                quantity: item.quantity,
+                position: index,
+              })),
+            }
+          : undefined,
+      },
+      include: this.dealInclude,
+    });
+
+    return this.resolveDeal(updatedDeal);
   }
 
   async deleteDeal(id: string) {

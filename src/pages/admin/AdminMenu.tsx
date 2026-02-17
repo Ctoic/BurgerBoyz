@@ -46,6 +46,7 @@ const AdminMenu = () => {
   });
 
   const [addOnForm, setAddOnForm] = useState({
+    categoryId: "",
     name: "",
     price: "",
     isActive: true,
@@ -70,12 +71,62 @@ const AdminMenu = () => {
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [productCategoryFilter, setProductCategoryFilter] = useState("all");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingAddOnId, setEditingAddOnId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+
+  const resetCategoryForm = () => {
+    setCategoryForm({ name: "", position: 0, isActive: true });
+    setEditingCategoryId(null);
+  };
+
+  const resetAddOnForm = () => {
+    setAddOnForm({
+      categoryId: categories[0]?.id ?? "",
+      name: "",
+      price: "",
+      isActive: true,
+    });
+    setEditingAddOnId(null);
+  };
+
+  const resetItemForm = () => {
+    setItemForm({
+      categoryId: categories[0]?.id ?? "",
+      name: "",
+      description: "",
+      price: "",
+      imageUrl: "",
+    });
+    setEditingItemId(null);
+  };
+
+  const resetDealForm = () => {
+    setDealForm({
+      name: "",
+      description: "",
+      tag: "Deal",
+      imageUrl: "",
+      discount: "",
+      bundleItemQuantities: {},
+      isActive: true,
+    });
+    setEditingDealId(null);
+  };
 
   useEffect(() => {
     if (!itemForm.categoryId && categories.length > 0) {
       setItemForm((prev) => ({ ...prev, categoryId: categories[0].id }));
     }
   }, [categories, itemForm.categoryId]);
+
+  useEffect(() => {
+    if (!addOnForm.categoryId && categories.length > 0) {
+      setAddOnForm((prev) => ({ ...prev, categoryId: categories[0].id }));
+    }
+  }, [categories, addOnForm.categoryId]);
 
   const createCategoryMutation = useMutation({
     mutationFn: () =>
@@ -88,7 +139,33 @@ const AdminMenu = () => {
         }),
       }),
     onSuccess: () => {
-      setCategoryForm({ name: "", position: 0, isActive: true });
+      resetCategoryForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/menu/categories/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: categoryForm.name,
+          position: Number(categoryForm.position) || 0,
+          isActive: categoryForm.isActive,
+        }),
+      }),
+    onSuccess: () => {
+      resetCategoryForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ ok: true }>(`/admin/menu/categories/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
     },
   });
@@ -98,13 +175,41 @@ const AdminMenu = () => {
       apiFetch("/admin/menu/add-ons", {
         method: "POST",
         body: JSON.stringify({
+          categoryId: addOnForm.categoryId || undefined,
           name: addOnForm.name,
           priceCents: Math.round(Number(addOnForm.price) * 100),
           isActive: addOnForm.isActive,
         }),
       }),
     onSuccess: () => {
-      setAddOnForm({ name: "", price: "", isActive: true });
+      resetAddOnForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const updateAddOnMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/menu/add-ons/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          categoryId: addOnForm.categoryId,
+          name: addOnForm.name,
+          priceCents: Math.round(Number(addOnForm.price) * 100),
+          isActive: addOnForm.isActive,
+        }),
+      }),
+    onSuccess: () => {
+      resetAddOnForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const deleteAddOnMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ ok: true }>(`/admin/menu/add-ons/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
     },
   });
@@ -122,13 +227,26 @@ const AdminMenu = () => {
         }),
       }),
     onSuccess: () => {
-      setItemForm((prev) => ({
-        ...prev,
-        name: "",
-        description: "",
-        price: "",
-        imageUrl: "",
-      }));
+      resetItemForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+      setIsProductDialogOpen(false);
+    },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/menu/items/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          categoryId: itemForm.categoryId,
+          name: itemForm.name,
+          description: itemForm.description,
+          priceCents: Math.round(Number(itemForm.price) * 100),
+          imageUrl: itemForm.imageUrl || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      resetItemForm();
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
       setIsProductDialogOpen(false);
     },
@@ -166,15 +284,34 @@ const AdminMenu = () => {
         }),
       }),
     onSuccess: () => {
-      setDealForm({
-        name: "",
-        description: "",
-        tag: "Deal",
-        imageUrl: "",
-        discount: "",
-        bundleItemQuantities: {},
-        isActive: true,
-      });
+      resetDealForm();
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const updateDealMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<ApiDeal>(`/admin/menu/deals/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: dealForm.name,
+          description: dealForm.description,
+          tag: dealForm.tag || undefined,
+          imageUrl: dealForm.imageUrl || undefined,
+          bundleItems: dealItemOptions
+            .map((item) => ({
+              menuItemId: item.id,
+              quantity: dealForm.bundleItemQuantities[item.id] ?? 0,
+            }))
+            .filter((item) => item.quantity > 0),
+          discountCents: dealForm.discount
+            ? Math.round(Number(dealForm.discount) * 100)
+            : 0,
+          isActive: dealForm.isActive,
+        }),
+      }),
+    onSuccess: () => {
+      resetDealForm();
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
     },
   });
@@ -196,19 +333,28 @@ const AdminMenu = () => {
   }, [categories]);
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) return categoryItems;
     const term = searchTerm.toLowerCase();
+
     return categoryItems.filter(({ category, item }) => {
+      const matchesCategory =
+        productCategoryFilter === "all" || category.id === productCategoryFilter;
+      if (!matchesCategory) {
+        return false;
+      }
+      if (!searchTerm.trim()) {
+        return true;
+      }
+
       return (
         item.name.toLowerCase().includes(term) ||
         item.description.toLowerCase().includes(term) ||
         category.name.toLowerCase().includes(term)
       );
     });
-  }, [categoryItems, searchTerm]);
+  }, [categoryItems, productCategoryFilter, searchTerm]);
   const productsPagination = usePagination(filteredItems, {
     pageSize: 10,
-    resetDeps: [searchTerm, activeSection],
+    resetDeps: [searchTerm, productCategoryFilter, activeSection],
   });
   const paginatedProducts = productsPagination.paginatedItems;
 
@@ -258,6 +404,100 @@ const AdminMenu = () => {
     });
   };
 
+  const handleOpenCreateProductDialog = () => {
+    resetItemForm();
+    setIsProductDialogOpen(true);
+  };
+
+  const handleOpenEditProductDialog = (item: ApiMenuItem, categoryId: string) => {
+    setEditingItemId(item.id);
+    setItemForm({
+      categoryId,
+      name: item.name,
+      description: item.description,
+      price: (item.priceCents / 100).toFixed(2),
+      imageUrl: item.imageUrl ?? "",
+    });
+    setIsProductDialogOpen(true);
+  };
+
+  const handleProductDialogOpenChange = (open: boolean) => {
+    setIsProductDialogOpen(open);
+    if (!open) {
+      resetItemForm();
+    }
+  };
+
+  const handleCategorySubmit = () => {
+    if (editingCategoryId) {
+      updateCategoryMutation.mutate(editingCategoryId);
+      return;
+    }
+    createCategoryMutation.mutate();
+  };
+
+  const handleAddOnSubmit = () => {
+    if (editingAddOnId) {
+      updateAddOnMutation.mutate(editingAddOnId);
+      return;
+    }
+    createAddOnMutation.mutate();
+  };
+
+  const handleDealSubmit = () => {
+    if (editingDealId) {
+      updateDealMutation.mutate(editingDealId);
+      return;
+    }
+    createDealMutation.mutate();
+  };
+
+  const handleEditCategory = (category: ApiAdminMenuResponse["categories"][number]) => {
+    setEditingCategoryId(category.id);
+    setCategoryForm({
+      name: category.name,
+      position: category.position ?? 0,
+      isActive: category.isActive ?? true,
+    });
+  };
+
+  const handleEditAddOn = (addOn: ApiAdminMenuResponse["addOns"][number]) => {
+    setEditingAddOnId(addOn.id);
+    setAddOnForm({
+      categoryId: addOn.categoryId ?? categories[0]?.id ?? "",
+      name: addOn.name,
+      price: (addOn.priceCents / 100).toFixed(2),
+      isActive: addOn.isActive ?? true,
+    });
+  };
+
+  const handleEditDeal = (deal: ApiDeal) => {
+    setEditingDealId(deal.id);
+    setDealForm({
+      name: deal.name,
+      description: deal.description,
+      tag: deal.tag,
+      imageUrl: deal.imageUrl ?? "",
+      discount: deal.discountCents > 0 ? (deal.discountCents / 100).toFixed(2) : "",
+      bundleItemQuantities: Object.fromEntries(
+        deal.bundleItems.map((bundleItem) => [bundleItem.id, bundleItem.quantity]),
+      ),
+      isActive: deal.isActive,
+    });
+  };
+
+  const isCategoryFormBusy =
+    createCategoryMutation.isPending ||
+    updateCategoryMutation.isPending ||
+    deleteCategoryMutation.isPending;
+  const isAddOnFormBusy =
+    createAddOnMutation.isPending ||
+    updateAddOnMutation.isPending ||
+    deleteAddOnMutation.isPending;
+  const isProductFormBusy = createItemMutation.isPending || updateItemMutation.isPending;
+  const isDealFormBusy =
+    createDealMutation.isPending || updateDealMutation.isPending || deleteDealMutation.isPending;
+
   const isProductFormValid =
     itemForm.categoryId && itemForm.name.trim() && itemForm.description.trim() && itemForm.price.trim();
   const isDealFormValid =
@@ -288,7 +528,19 @@ const AdminMenu = () => {
                 className="h-11 pl-9"
               />
             </div>
-            <Button className="rounded-full" onClick={() => setIsProductDialogOpen(true)}>
+            <select
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground sm:w-56"
+              value={productCategoryFilter}
+              onChange={(event) => setProductCategoryFilter(event.target.value)}
+            >
+              <option value="all">All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            <Button className="rounded-full" onClick={handleOpenCreateProductDialog}>
               <Plus className="h-4 w-4" />
               Add Product
             </Button>
@@ -333,14 +585,27 @@ const AdminMenu = () => {
                           {formatCurrency(item.priceCents)}
                         </td>
                         <td className="px-5 py-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => deleteItemMutation.mutate(item.id)}
-                            disabled={deleteItemMutation.isPending}
-                          >
-                            Delete
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenEditProductDialog(item, category.id)}
+                              disabled={isProductFormBusy}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (!window.confirm(`Delete product "${item.name}"?`)) return;
+                                deleteItemMutation.mutate(item.id);
+                              }}
+                              disabled={deleteItemMutation.isPending}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -359,13 +624,17 @@ const AdminMenu = () => {
             />
           </div>
 
-          <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
+          <Dialog open={isProductDialogOpen} onOpenChange={handleProductDialogOpenChange}>
             <DialogContent className="w-[92vw] max-w-2xl rounded-2xl sm:rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-card)]">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="font-display text-2xl text-foreground">Add Product</h2>
+                  <h2 className="font-display text-2xl text-foreground">
+                    {editingItemId ? "Edit Product" : "Add Product"}
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Add a new menu item for Burger Guys.
+                    {editingItemId
+                      ? "Update the selected menu item."
+                      : "Add a new menu item for Burger Guys."}
                   </p>
                 </div>
                 <DialogClose asChild>
@@ -442,10 +711,20 @@ const AdminMenu = () => {
                 </DialogClose>
                 <Button
                   className="btn-order rounded-full"
-                  onClick={() => createItemMutation.mutate()}
-                  disabled={!isProductFormValid || createItemMutation.isPending}
+                  onClick={() => {
+                    if (editingItemId) {
+                      updateItemMutation.mutate(editingItemId);
+                      return;
+                    }
+                    createItemMutation.mutate();
+                  }}
+                  disabled={!isProductFormValid || isProductFormBusy}
                 >
-                  {createItemMutation.isPending ? "Saving..." : "Add Product"}
+                  {isProductFormBusy
+                    ? "Saving..."
+                    : editingItemId
+                      ? "Update Product"
+                      : "Add Product"}
                 </Button>
               </div>
             </DialogContent>
@@ -456,7 +735,9 @@ const AdminMenu = () => {
       {activeSection === "categories" && (
         <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
           <div className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-            <h2 className="font-display text-xl text-foreground mb-4">Add Category</h2>
+            <h2 className="font-display text-xl text-foreground mb-4">
+              {editingCategoryId ? "Edit Category" : "Add Category"}
+            </h2>
             <div className="space-y-3">
               <Input
                 placeholder="Category name"
@@ -479,11 +760,20 @@ const AdminMenu = () => {
               </label>
               <Button
                 className="w-full"
-                onClick={() => createCategoryMutation.mutate()}
-                disabled={!categoryForm.name || createCategoryMutation.isPending}
+                onClick={handleCategorySubmit}
+                disabled={!categoryForm.name || isCategoryFormBusy}
               >
-                Add Category
+                {isCategoryFormBusy
+                  ? "Saving..."
+                  : editingCategoryId
+                    ? "Update Category"
+                    : "Add Category"}
               </Button>
+              {editingCategoryId ? (
+                <Button className="w-full" variant="outline" onClick={resetCategoryForm}>
+                  Cancel Edit
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -495,8 +785,33 @@ const AdminMenu = () => {
               ) : (
                 paginatedCategories.map((category) => (
                   <div key={category.id} className="flex items-center justify-between rounded-2xl border border-border bg-background px-4 py-3">
-                    <span className="font-semibold text-foreground">{category.name}</span>
-                    <span className="text-xs text-muted-foreground">{category.items.length} items</span>
+                    <div>
+                      <span className="font-semibold text-foreground">{category.name}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {category.items.length} items
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditCategory(category)}
+                        disabled={isCategoryFormBusy}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!window.confirm(`Delete category "${category.name}"?`)) return;
+                          deleteCategoryMutation.mutate(category.id);
+                        }}
+                        disabled={deleteCategoryMutation.isPending}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -517,8 +832,26 @@ const AdminMenu = () => {
       {activeSection === "addons" && (
         <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
           <div className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-            <h2 className="font-display text-xl text-foreground mb-4">Add Add-on</h2>
+            <h2 className="font-display text-xl text-foreground mb-4">
+              {editingAddOnId ? "Edit Add-on" : "Add Add-on"}
+            </h2>
             <div className="space-y-3">
+              <label className="grid gap-2 text-sm font-semibold text-foreground">
+                Category
+                <select
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal text-foreground"
+                  value={addOnForm.categoryId}
+                  onChange={(event) =>
+                    setAddOnForm((prev) => ({ ...prev, categoryId: event.target.value }))
+                  }
+                >
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <Input
                 placeholder="Add-on name"
                 value={addOnForm.name}
@@ -539,11 +872,25 @@ const AdminMenu = () => {
               </label>
               <Button
                 className="w-full"
-                onClick={() => createAddOnMutation.mutate()}
-                disabled={!addOnForm.name || !addOnForm.price || createAddOnMutation.isPending}
+                onClick={handleAddOnSubmit}
+                disabled={
+                  !addOnForm.categoryId ||
+                  !addOnForm.name ||
+                  !addOnForm.price ||
+                  isAddOnFormBusy
+                }
               >
-                Add Add-on
+                {isAddOnFormBusy
+                  ? "Saving..."
+                  : editingAddOnId
+                    ? "Update Add-on"
+                    : "Add Add-on"}
               </Button>
+              {editingAddOnId ? (
+                <Button className="w-full" variant="outline" onClick={resetAddOnForm}>
+                  Cancel Edit
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -555,8 +902,36 @@ const AdminMenu = () => {
               ) : (
                 paginatedAddOns.map((addOn) => (
                   <div key={addOn.id} className="flex items-center justify-between rounded-2xl border border-border bg-background px-4 py-3">
-                    <span className="font-semibold text-foreground">{addOn.name}</span>
-                    <span className="text-xs text-muted-foreground">{formatCurrency(addOn.priceCents)}</span>
+                    <div>
+                      <span className="font-semibold text-foreground">{addOn.name}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {addOn.category?.name ?? "All categories"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {formatCurrency(addOn.priceCents)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditAddOn(addOn)}
+                        disabled={isAddOnFormBusy}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!window.confirm(`Delete add-on "${addOn.name}"?`)) return;
+                          deleteAddOnMutation.mutate(addOn.id);
+                        }}
+                        disabled={deleteAddOnMutation.isPending}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -577,7 +952,9 @@ const AdminMenu = () => {
       {activeSection === "deals" && (
         <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
           <div className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-            <h2 className="font-display text-xl text-foreground mb-4">Create Deal</h2>
+            <h2 className="font-display text-xl text-foreground mb-4">
+              {editingDealId ? "Edit Deal" : "Create Deal"}
+            </h2>
             <div className="space-y-3">
               <Input
                 placeholder="Deal name"
@@ -668,11 +1045,16 @@ const AdminMenu = () => {
 
               <Button
                 className="w-full"
-                onClick={() => createDealMutation.mutate()}
-                disabled={!isDealFormValid || createDealMutation.isPending}
+                onClick={handleDealSubmit}
+                disabled={!isDealFormValid || isDealFormBusy}
               >
-                {createDealMutation.isPending ? "Saving..." : "Create Deal"}
+                {isDealFormBusy ? "Saving..." : editingDealId ? "Update Deal" : "Create Deal"}
               </Button>
+              {editingDealId ? (
+                <Button className="w-full" variant="outline" onClick={resetDealForm}>
+                  Cancel Edit
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -698,14 +1080,27 @@ const AdminMenu = () => {
                           <p className="font-semibold text-foreground">{deal.name}</p>
                           <p className="text-xs text-muted-foreground">{deal.description}</p>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deleteDealMutation.mutate(deal.id)}
-                          disabled={deleteDealMutation.isPending}
-                        >
-                          Delete
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditDeal(deal)}
+                            disabled={isDealFormBusy}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (!window.confirm(`Delete deal "${deal.name}"?`)) return;
+                              deleteDealMutation.mutate(deal.id);
+                            }}
+                            disabled={deleteDealMutation.isPending}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="rounded-full border border-border px-2 py-1">

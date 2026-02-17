@@ -395,20 +395,44 @@ const Account = () => {
                           </div>
                           <div className="divide-y divide-border">
                             {selectedOrder.items.map((item) => (
-                              <div
-                                key={item.id}
-                                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate font-semibold text-foreground">{item.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Qty {item.quantity}
-                                  </p>
-                                </div>
-                                <span className="font-semibold text-foreground">
-                                  {formatCurrency(item.basePriceCents * item.quantity)}
-                                </span>
-                              </div>
+                              (() => {
+                                const addOnTotal = item.addOns.reduce(
+                                  (sum, addOn) => sum + addOn.priceCents,
+                                  0,
+                                );
+                                const lineTotalCents =
+                                  (item.basePriceCents + addOnTotal) * item.quantity;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-start justify-between gap-3 px-4 py-3 text-sm"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="truncate font-semibold text-foreground">
+                                        {item.name}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Qty {item.quantity}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {item.addOns.length > 0
+                                          ? `Add-ons: ${item.addOns
+                                              .map((addOn) => addOn.name)
+                                              .join(", ")}`
+                                          : "No add-ons"}
+                                      </p>
+                                      {item.removals.length > 0 ? (
+                                        <p className="text-xs text-muted-foreground">
+                                          Removed: {item.removals.join(", ")}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <span className="font-semibold text-foreground">
+                                      {formatCurrency(lineTotalCents)}
+                                    </span>
+                                  </div>
+                                );
+                              })()
                             ))}
                           </div>
                         </div>
