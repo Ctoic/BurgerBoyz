@@ -1,4 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CreateAddOnDto } from "./dto/create-add-on.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -89,6 +105,32 @@ export class MenuController {
   @Post("admin/menu/deals")
   createDeal(@Body() dto: CreateDealDto) {
     return this.menuService.createDeal(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("admin/menu/images")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadMenuImage(
+    @UploadedFile()
+    file: {
+      buffer: Buffer;
+      size: number;
+      mimetype: string;
+      originalname: string;
+    },
+    @Req() req: Request,
+  ) {
+    const user = req.user as { role?: string } | undefined;
+    if (user?.role !== "ADMIN") {
+      throw new ForbiddenException("Only admins can upload menu images.");
+    }
+    return this.menuService.uploadMenuImage(file);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -22,11 +22,14 @@ export async function apiFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
+  const isFormDataBody =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const shouldSendJsonContentType =
     method !== "GET" &&
     method !== "HEAD" &&
     options.body !== undefined &&
-    options.body !== null;
+    options.body !== null &&
+    !isFormDataBody;
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

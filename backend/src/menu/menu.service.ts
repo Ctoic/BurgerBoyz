@@ -1,8 +1,11 @@
 import {
   BadRequestException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { randomUUID } from "crypto";
 import { buildPaginatedResponse, resolvePage, resolvePageSize } from "../common/pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateAddOnDto } from "./dto/create-add-on.dto";
@@ -41,9 +44,27 @@ export interface ResolvedDeal {
   bundleItems: ResolvedDealItem[];
 }
 
+interface UploadedMenuImageFile {
+  buffer: Buffer;
+  size: number;
+  mimetype: string;
+  originalname: string;
+}
+
 @Injectable()
 export class MenuService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {}
+
+  private static readonly MAX_MENU_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+  private static readonly ALLOWED_MENU_IMAGE_MIME_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/avif",
+  ]);
 
   private readonly dealInclude = {
     bundleItems: {
@@ -373,7 +394,8 @@ export class MenuService {
         name: dto.name,
         description: dto.description,
         priceCents: dto.priceCents,
-        imageUrl: dto.imageUrl,
+        imageUrl:
+          dto.imageUrl === undefined ? undefined : dto.imageUrl?.trim() || null,
         isPopular: dto.isPopular ?? false,
         isActive: dto.isActive ?? true,
         addOns: dto.addOnIds?.length
@@ -421,7 +443,8 @@ export class MenuService {
         name: dto.name,
         description: dto.description,
         priceCents: dto.priceCents,
-        imageUrl: dto.imageUrl,
+        imageUrl:
+          dto.imageUrl === undefined ? undefined : dto.imageUrl?.trim() || null,
         isPopular: dto.isPopular,
         isActive: dto.isActive,
       },
@@ -440,6 +463,82 @@ export class MenuService {
     }
 
     return item;
+  }
+
+  async uploadMenuImage(file: UploadedMenuImageFile) {
+    if (!file) {
+      throw new BadRequestException("Image file is required.");
+    }
+
+    if (!MenuService.ALLOWED_MENU_IMAGE_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        "Unsupported image format. Use JPG, PNG, WEBP, or AVIF.",
+      );
+    }
+
+    if (file.size > MenuService.MAX_MENU_IMAGE_SIZE_BYTES) {
+      throw new BadRequestException("Image size exceeds 5MB.");
+    }
+
+    const supabaseUrl = this.configService.get<string>("SUPABASE_URL")?.trim();
+    const serviceRoleKey = this.configService
+      .get<string>("SUPABASE_SERVICE_ROLE_KEY")
+      ?.trim();
+    const bucket =
+      this.configService.get<string>("SUPABASE_STORAGE_BUCKET")?.trim() ||
+      "product-images";
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new InternalServerErrorException(
+        "Supabase storage is not configured on the server.",
+      );
+    }
+
+    const normalizedSupabaseUrl = supabaseUrl.replace(/\/+$/, "");
+    const extension = this.resolveExtension(file.originalname, file.mimetype);
+    const objectPath = `menu-items/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
+
+    const encodedBucket = encodeURIComponent(bucket);
+    const encodedObjectPath = objectPath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+
+    const uploadResponse = await fetch(
+      `${normalizedSupabaseUrl}/storage/v1/object/${encodedBucket}/${encodedObjectPath}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceRoleKey}`,
+          apikey: serviceRoleKey,
+          "Content-Type": file.mimetype,
+          "x-upsert": "false",
+        },
+        body: new Uint8Array(file.buffer),
+      },
+    );
+
+    if (!uploadResponse.ok) {
+      let details = "";
+      try {
+        const errorBody = (await uploadResponse.json()) as {
+          message?: string;
+          error?: string;
+        };
+        details = errorBody.message || errorBody.error || "";
+      } catch {
+        // Ignore body parse failures and fall back to status text.
+      }
+      throw new BadRequestException(
+        details || "Failed to upload image to storage.",
+      );
+    }
+
+    return {
+      bucket,
+      path: objectPath,
+      publicUrl: `${normalizedSupabaseUrl}/storage/v1/object/public/${encodedBucket}/${encodedObjectPath}`,
+    };
   }
 
   async deleteMenuItem(id: string) {
@@ -607,5 +706,28 @@ export class MenuService {
       updatedAt: deal.updatedAt.toISOString(),
       bundleItems,
     };
+  }
+
+  private resolveExtension(fileName: string, mimetype: string) {
+    const normalized = fileName.trim().toLowerCase();
+    const fileNameExtension =
+      normalized.lastIndexOf(".") > -1
+        ? normalized.slice(normalized.lastIndexOf(".") + 1)
+        : "";
+
+    if (fileNameExtension && /^[a-z0-9]+$/.test(fileNameExtension)) {
+      return fileNameExtension;
+    }
+
+    switch (mimetype) {
+      case "image/png":
+        return "png";
+      case "image/webp":
+        return "webp";
+      case "image/avif":
+        return "avif";
+      default:
+        return "jpg";
+    }
   }
 }

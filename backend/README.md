@@ -2,8 +2,10 @@
 
 ## Setup
 1. Create a Supabase Postgres database and copy the connection string.
-2. Create `backend/.env` based on `backend/.env.example`.
-3. Install dependencies and run migrations:
+2. Create a Supabase Storage bucket for product images (default bucket name used by backend: `product-images`).
+3. Copy `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from Supabase project settings.
+4. Create `backend/.env` based on `backend/.env.example`.
+5. Install dependencies and run migrations:
 
 ```bash
 cd backend
