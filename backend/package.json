@@ -9,6 +9,7 @@
     "start:prod": "node dist/src/main.js",
     "build": "nest build",
     "lint": "eslint \"{src,test}/**/*.ts\"",
+    "check:env-example": "bash ../scripts/check-env-example.sh",
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

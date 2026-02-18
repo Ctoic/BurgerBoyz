@@ -17,6 +17,12 @@ import heroBurger from "@/assets/hero-burger.jpg";
 import PaginationFooter from "@/components/PaginationFooter";
 import { usePagination } from "@/hooks/usePagination";
 
+interface AdminMenuImageUploadResponse {
+  bucket: string;
+  path: string;
+  publicUrl: string;
+}
+
 const SECTION_LABELS: Record<string, string> = {
   products: "Products",
   categories: "Categories",
@@ -223,7 +229,7 @@ const AdminMenu = () => {
           name: itemForm.name,
           description: itemForm.description,
           priceCents: Math.round(Number(itemForm.price) * 100),
-          imageUrl: itemForm.imageUrl || undefined,
+          imageUrl: itemForm.imageUrl.trim() || null,
         }),
       }),
     onSuccess: () => {
@@ -242,7 +248,7 @@ const AdminMenu = () => {
           name: itemForm.name,
           description: itemForm.description,
           priceCents: Math.round(Number(itemForm.price) * 100),
-          imageUrl: itemForm.imageUrl || undefined,
+          imageUrl: itemForm.imageUrl.trim() || null,
         }),
       }),
     onSuccess: () => {
@@ -259,6 +265,36 @@ const AdminMenu = () => {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+    },
+  });
+
+  const uploadItemImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      return apiFetch<AdminMenuImageUploadResponse>("/admin/menu/images", {
+        method: "POST",
+        body: formData,
+      });
+    },
+    onSuccess: (payload) => {
+      setItemForm((prev) => ({ ...prev, imageUrl: payload.publicUrl }));
+    },
+  });
+
+  const uploadDealImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      return apiFetch<AdminMenuImageUploadResponse>("/admin/menu/images", {
+        method: "POST",
+        body: formData,
+      });
+    },
+    onSuccess: (payload) => {
+      setDealForm((prev) => ({ ...prev, imageUrl: payload.publicUrl }));
     },
   });
 
@@ -428,6 +464,18 @@ const AdminMenu = () => {
     }
   };
 
+  const handleProductImageUpload = (file: File | null) => {
+    if (!file) return;
+    uploadItemImageMutation.reset();
+    uploadItemImageMutation.mutate(file);
+  };
+
+  const handleDealImageUpload = (file: File | null) => {
+    if (!file) return;
+    uploadDealImageMutation.reset();
+    uploadDealImageMutation.mutate(file);
+  };
+
   const handleCategorySubmit = () => {
     if (editingCategoryId) {
       updateCategoryMutation.mutate(editingCategoryId);
@@ -495,8 +543,12 @@ const AdminMenu = () => {
     updateAddOnMutation.isPending ||
     deleteAddOnMutation.isPending;
   const isProductFormBusy = createItemMutation.isPending || updateItemMutation.isPending;
+  const isProductUploadBusy = uploadItemImageMutation.isPending;
+  const productImageUploadError = uploadItemImageMutation.error?.message;
   const isDealFormBusy =
     createDealMutation.isPending || updateDealMutation.isPending || deleteDealMutation.isPending;
+  const isDealUploadBusy = uploadDealImageMutation.isPending;
+  const dealImageUploadError = uploadDealImageMutation.error?.message;
 
   const isProductFormValid =
     itemForm.categoryId && itemForm.name.trim() && itemForm.description.trim() && itemForm.price.trim();
@@ -691,16 +743,50 @@ const AdminMenu = () => {
                       className="h-11 rounded-xl"
                     />
                   </label>
-                  <label className="grid gap-2 text-sm font-semibold text-foreground">
-                    Image URL
+                  <div className="grid gap-2 text-sm font-semibold text-foreground">
+                    Product image
                     <Input
-                      placeholder="https://"
-                      value={itemForm.imageUrl}
-                      onChange={(event) => setItemForm((prev) => ({ ...prev, imageUrl: event.target.value }))}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/avif"
+                      onChange={(event) => {
+                        handleProductImageUpload(event.target.files?.[0] ?? null);
+                        event.target.value = "";
+                      }}
                       className="h-11 rounded-xl"
+                      disabled={isProductUploadBusy}
                     />
-                  </label>
+                    {isProductUploadBusy ? (
+                      <p className="text-xs text-muted-foreground">Uploading image...</p>
+                    ) : null}
+                    {productImageUploadError ? (
+                      <p className="text-xs text-destructive">{productImageUploadError}</p>
+                    ) : null}
+                  </div>
                 </div>
+
+                {itemForm.imageUrl ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Current image
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={itemForm.imageUrl}
+                        alt="Product preview"
+                        className="h-20 w-20 rounded-xl border border-border object-cover"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setItemForm((prev) => ({ ...prev, imageUrl: "" }))}
+                        disabled={isProductFormBusy || isProductUploadBusy}
+                      >
+                        Remove image
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-8 flex flex-wrap justify-end gap-3">
@@ -718,7 +804,7 @@ const AdminMenu = () => {
                     }
                     createItemMutation.mutate();
                   }}
-                  disabled={!isProductFormValid || isProductFormBusy}
+                  disabled={!isProductFormValid || isProductFormBusy || isProductUploadBusy}
                 >
                   {isProductFormBusy
                     ? "Saving..."
@@ -983,13 +1069,42 @@ const AdminMenu = () => {
                   }
                 />
               </div>
-              <Input
-                placeholder="Image URL (optional)"
-                value={dealForm.imageUrl}
-                onChange={(event) =>
-                  setDealForm((prev) => ({ ...prev, imageUrl: event.target.value }))
-                }
-              />
+              <div className="grid gap-2">
+                <p className="text-sm font-medium text-foreground">Deal image</p>
+                <Input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/avif"
+                  onChange={(event) => {
+                    handleDealImageUpload(event.target.files?.[0] ?? null);
+                    event.target.value = "";
+                  }}
+                  disabled={isDealUploadBusy}
+                />
+                {isDealUploadBusy ? (
+                  <p className="text-xs text-muted-foreground">Uploading image...</p>
+                ) : null}
+                {dealImageUploadError ? (
+                  <p className="text-xs text-destructive">{dealImageUploadError}</p>
+                ) : null}
+                {dealForm.imageUrl ? (
+                  <div className="mt-1 flex items-center gap-3">
+                    <img
+                      src={dealForm.imageUrl}
+                      alt="Deal preview"
+                      className="h-16 w-16 rounded-lg border border-border object-cover"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDealForm((prev) => ({ ...prev, imageUrl: "" }))}
+                      disabled={isDealFormBusy || isDealUploadBusy}
+                    >
+                      Remove image
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -1046,7 +1161,7 @@ const AdminMenu = () => {
               <Button
                 className="w-full"
                 onClick={handleDealSubmit}
-                disabled={!isDealFormValid || isDealFormBusy}
+                disabled={!isDealFormValid || isDealFormBusy || isDealUploadBusy}
               >
                 {isDealFormBusy ? "Saving..." : editingDealId ? "Update Deal" : "Create Deal"}
               </Button>

@@ -1,0 +1,15 @@
+name: Env Example Guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-env-example:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate .env.example placeholders
+        run: bash ./scripts/check-env-example.sh
