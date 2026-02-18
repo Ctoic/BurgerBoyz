@@ -15,6 +15,11 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
+6. Verify `.env.example` contains placeholders only:
+```bash
+npm run check:env-example
+```
+
 ## Run
 ```bash
 npm run start:dev
